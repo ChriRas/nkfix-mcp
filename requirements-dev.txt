@@ -1,0 +1,5 @@
+# Development and tests. Pinned so that a green run today is green tomorrow.
+# Install with: uv pip install -e . -r requirements-dev.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.17.3

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nkfix-mcp"
+version = "0.1.0"
+description = "MCP-Server für NebenkostenFix: ein KI-Assistent liest den Bestand und erfasst Rechnungen, Zählerstände und Zahlungen über die JSON-API."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+# Pinned like the main project: an install tomorrow should get the versions
+# the tests ran against. The server API of mcp changed with major 2
+# (FastMCP -> MCPServer); a silent upgrade to 3 would be just as much of a
+# break. mcp pulls in httpx2, anyio and pydantic anyway; the server imports
+# them directly, so they are listed explicitly. requirements.txt pins all
+# other versions (uv pip compile).
+dependencies = [
+    "mcp==2.3.0",
+    "httpx2==2.16.0",
+    "anyio==4.15.1",
+    "pydantic==2.14.1",
+]
+
+[project.scripts]
+nkfix-mcp = "nkfix_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nkfix_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q -p no:cacheprovider --import-mode=importlib"
+markers = [
+    "contract: contract test against a real NebenkostenFix instance (needs NKF_SOURCE)",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

@@ -1,0 +1,466 @@
+"""Record tools: create a payment, a meter reading and an invoice.
+
+They only create, never change or delete; an API key cannot do that
+anyway. A mistake therefore stays until the human removes it in
+NebenkostenFix. That is why everything is checked before creating
+(duplicate, implausible reading), and if there are concerns, the human decides:
+
+- If the client can ask (MCP elicitation, e.g. Claude Code), the server asks
+  the human directly. Their no stands, even if the model sends
+  ``confirmed=true`` along.
+- Otherwise "not saved" comes back with the concerns. The model is to ask
+  the human and send ``confirmed=true`` only with their consent. This
+  cannot be enforced; the description says it clearly.
+
+The confirmation prompt sits in front of the tool as a resolver (``Resolve``):
+that way it works over both protocol generations of MCP, the old one with a
+request from the server and the new one (from 2026-07-28) with ``InputRequiredResult``.
+
+No ``from __future__ import annotations``: ``Resolve(…)`` refers to
+local functions in ``register``, and the SDK evaluates the annotations
+only later, where it no longer sees these names.
+"""
+
+import re
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Annotated, Any, Literal
+
+from mcp.server.mcpserver import Context, Elicit, ElicitationResult, MCPServer, Resolve
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp_types import ToolAnnotations
+from pydantic import BaseModel, BeforeValidator, Field
+
+from nkfix_mcp.client import NkfClient, NkfConfirmationRequired, NkfError
+from nkfix_mcp.formatting import CENT, format_money
+from nkfix_mcp.formatting import amount as as_amount
+from nkfix_mcp.receipts import Receipt, ReceiptError, read_receipt
+from nkfix_mcp.tools import report_errors, tool
+from nkfix_mcp.tools.check import IsoDate, MeterId
+from nkfix_mcp.tools.read import PaymentType, PropertyId, TenantId
+
+CREATE_ONLY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False,
+                              open_world_hint=False)
+# According to the Claude Code docs (27.10.2026): asks on every call, even
+# if the human has approved the tool in general.
+REQUIRE_USER_INTERACTION = {'anthropic/requiresUserInteraction': True}
+
+HeatingCostType = Literal['brennstoff', 'betriebsstrom', 'bedienung', 'pruefung', 'reinigung', 'messung',
+                          'anmietung_erfassung', 'verwendung_erfassung']
+
+
+Section35aCategory = Literal['haushaltsnah', 'handwerker']
+AMBIGUOUS_AMOUNT = ('Der Betrag {value!r} hat mehr als zwei Nachkommastellen und ist mehrdeutig (ist „1.500“ 1500 € '
+                    'oder 1,50 €?). Gib ihn eindeutig an, z. B. "1500.00" oder "1500,00".')
+
+
+def _parse_amount(value: Any) -> Decimal:
+    """``"1234,5"``, ``"1.234,56"``, ``"98.7"`` and ``98.7`` become ``Decimal('1234.50')`` etc.
+
+    More than two decimal places are not rounded but rejected:
+    "1.500" copied from a receipt almost always means 1500 €; read as a
+    decimal number it would be 1.50 €, and nobody would notice.
+    """
+    if isinstance(value, bool) or not isinstance(value, str | int | float | Decimal):
+        raise ValueError(f'Kein Betrag: {value!r}')
+    text = str(value).strip().replace(' ', '').replace('€', '')
+    if ',' in text:
+        text = text.replace('.', '').replace(',', '.')
+    try:
+        number = Decimal(text)
+    except InvalidOperation as error:
+        raise ValueError(f'Kein Betrag: {value!r}') from error
+    if not number.is_finite() or number.as_tuple().exponent < -2:
+        raise ValueError(AMBIGUOUS_AMOUNT.format(value=value))
+    return number.quantize(CENT)
+
+
+Amount = Annotated[Decimal, BeforeValidator(_parse_amount),
+                   Field(description='Betrag in Euro mit höchstens zwei Nachkommastellen, z. B. "1500.00" oder '
+                                     '"1.500,00"')]
+OptionalAmount = Annotated[Decimal | None, BeforeValidator(lambda w: None if w in (None, '') else _parse_amount(w)),
+                           Field(description='Betrag in Euro')]
+Confirmed = Annotated[bool, Field(description=(
+    'Nur auf true setzen, nachdem du dem Menschen die Bedenken aus einer vorigen Antwort gezeigt hast und er dem '
+    'Speichern ausdrücklich zugestimmt hat. Nie vorab und nie von dir aus.'))]
+
+
+class ConfirmationPrompt(BaseModel):
+    save: bool = Field(title='Trotzdem speichern?', description='Ja: der Eintrag wird trotzdem angelegt.')
+
+
+class PrecheckResult(BaseModel):
+    """Result of the precheck when nobody was asked."""
+
+    concerns: list[str]
+    can_elicit: bool
+
+
+class RecordResult(BaseModel):
+    saved: bool
+    id: int | None = Field(description='ID des neuen Eintrags')
+    concerns: list[str] = Field(description='was gegen das Speichern sprach (auch wenn trotzdem gespeichert wurde)')
+    note: str
+
+
+class Decision(BaseModel):
+    save: bool
+    despite_concerns: bool = False
+    concerns: list[str] = []
+    response: RecordResult | None = None
+
+
+def _can_elicit(ctx: Context) -> bool:
+    capabilities = ctx.client_capabilities
+    elicitation = capabilities.elicitation if capabilities is not None else None
+    return elicitation is not None and (elicitation.form is not None or elicitation.url is None)
+
+
+def _ask(ctx: Context, summary: str, concerns: list[str]) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+    if not concerns:
+        return PrecheckResult(concerns=[], can_elicit=True)
+    if not _can_elicit(ctx):
+        return PrecheckResult(concerns=concerns, can_elicit=False)
+    bullets = '\n'.join(f'• {b}' for b in concerns)
+    return Elicit(f'{summary}\n\nBedenken:\n{bullets}\n\nTrotzdem speichern?', ConfirmationPrompt)
+
+
+def _decide(decision: ElicitationResult[ConfirmationPrompt], confirmed: bool) -> Decision:
+    if decision.action != 'accept':
+        return Decision(save=False, response=RecordResult(
+            saved=False, id=None, concerns=[],
+            note='Nicht gespeichert: Der Mensch hat abgelehnt oder abgebrochen. Er kann den Eintrag selbst in '
+                 'NebenkostenFix anlegen.'))
+    data = decision.data
+    if isinstance(data, ConfirmationPrompt):
+        if data.save:
+            return Decision(save=True, despite_concerns=True)
+        return Decision(save=False, response=RecordResult(saved=False, id=None, concerns=[],
+                                                          note='Nicht gespeichert: Der Mensch hat abgelehnt.'))
+    if not data.concerns:
+        return Decision(save=True)
+    if confirmed:
+        return Decision(save=True, despite_concerns=True, concerns=data.concerns)
+    return Decision(save=False, response=RecordResult(
+        saved=False, id=None, concerns=data.concerns,
+        note=('Nicht gespeichert. Zeig dem Menschen die Bedenken und frag, ob trotzdem gespeichert werden soll. '
+              'Nur wenn er zustimmt: dasselbe Werkzeug mit denselben Werten und confirmed=true erneut aufrufen.')))
+
+
+def _saved(response: Any, decision: Decision) -> RecordResult:
+    new_id = response.get('id') if isinstance(response, dict) else None
+    if decision.concerns:
+        # Via confirmed=true: the concerns belong in the response so that the
+        # human sees them, even if the model clicked them away beforehand.
+        note = 'Gespeichert trotz Bedenken (confirmed=true). Nenne dem Menschen die Bedenken.'
+    elif decision.despite_concerns:
+        note = 'Gespeichert, nachdem der Mensch im Dialog zugestimmt hat.'
+    else:
+        note = 'Gespeichert.'
+    return RecordResult(saved=True, id=new_id, concerns=decision.concerns, note=note)
+
+
+def _format_date(text: str) -> str:
+    return date.fromisoformat(text).strftime('%d.%m.%Y')
+
+
+def _format_reading(value: float) -> str:
+    """Like ``_stand_text`` in NebenkostenFix: three decimals, no trailing zeros, with a comma."""
+    return f'{value:.3f}'.rstrip('0').rstrip('.').replace('.', ',')
+
+
+def _name_core(filename: str) -> str:
+    """The filename as NebenkostenFix stores it, only without separators and extension.
+
+    ``ablage.sanitize_name`` replaces umlauts and turns everything except
+    a-z, A-Z, 0-9 into an underscore; "Stadtwerke-Gäste 2025.pdf" becomes
+    "Stadtwerke_Gaeste_2025.pdf". The comparison ignores underscores and
+    case.
+    """
+    stem = Path(filename).stem
+    for umlaut, replacement in (('ä', 'ae'), ('ö', 'oe'), ('ü', 'ue'), ('Ä', 'Ae'), ('Ö', 'Oe'), ('Ü', 'Ue'),
+                                ('ß', 'ss')):
+        stem = stem.replace(umlaut, replacement)
+    return re.sub(r'[^a-z0-9]', '', stem.lower())
+
+
+def _without_none(fields: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in fields.items() if v is not None}
+
+
+ReceiptPath = Annotated[str, Field(description=(
+    'Pfad der Belegdatei auf diesem Rechner (PDF, JPEG, PNG, WebP oder HEIC), z. B. ~/Belege/wasser-2025.pdf'))]
+
+PAYMENT_TYPES_HELP = ('Miete: Kaltmiete. Nebenkostenvorauszahlung: der monatliche NK-Abschlag; eine Warmmiete '
+                      'teilst du in beide auf (Soll siehe get_advance_payment_status). Nebenkostenzahlung: '
+                      'Nachzahlung auf eine Abrechnung. Kaution: Mietsicherheit.')
+
+
+def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True) -> None:
+    meta = REQUIRE_USER_INTERACTION if require_interaction else None
+    receipt_dir = nkf.config.receipt_dir
+
+    def _read_receipt(path: str) -> Receipt:
+        try:
+            return read_receipt(path, receipt_dir)
+        except ReceiptError as error:
+            raise ToolError(str(error)) from error
+
+    async def _get(path: str) -> Any:
+        # Errors in the resolver reach the model only as ToolError.
+        try:
+            return await nkf.get(path)
+        except NkfError as error:
+            raise ToolError(str(error)) from error
+
+    # --- Payment ------------------------------------------------------------
+
+    async def precheck_payment(tenant_id: int, amount: Decimal, payment_date: str, payment_type: str,
+                               ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+        concerns = [
+            f'Eine Zahlung über {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)} gibt es '
+            f'schon für diesen Mieter (Zahlung {z["id"]}).'
+            for z in await _get('/api/payments')
+            if z['tenant_id'] == tenant_id and z['payment_date'] == payment_date and z['type'] == payment_type
+            and as_amount(z['amount']) == amount]
+        return _ask(ctx, f'Neue Zahlung: {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)}, '
+                         f'Mieter {tenant_id}.', concerns)
+
+    @tool(server, 'Zahlung erfassen', CREATE_ONLY, meta=meta)
+    @report_errors
+    async def record_payment(
+        tenant_id: TenantId,
+        amount: Amount,
+        payment_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Zahlungseingang, YYYY-MM-DD')],
+        payment_type: Annotated[PaymentType, Field(description=PAYMENT_TYPES_HELP)],
+        decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_payment)],
+        confirmed: Confirmed = False,
+    ) -> RecordResult:
+        """Legt in NebenkostenFix eine eingegangene Zahlung eines Mieters an (schreibt, ändert nichts
+        Bestehendes). Gibt es dieselbe Zahlung schon, wird vorher nachgefragt."""
+        result = _decide(decision, confirmed)
+        if not result.save:
+            return result.response
+        return _saved(await nkf.post('/api/payments', {
+            'tenant_id': tenant_id, 'amount': format_money(amount), 'type': payment_type,
+            'payment_date': payment_date}), result)
+
+    # --- Meter reading -------------------------------------------------------
+
+    async def precheck_reading(meter_id: int, reading_date: str, value: float, value_off_peak: float | None,
+                               ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+        concerns: list[str] = []
+        # The same rules NebenkostenFix uses to answer 409 "nachfrage"
+        # when saving (app.py, _ablesung_pruefen): here beforehand, so that
+        # the human decides and not the model.
+        readings = [s for s in await _get('/api/readings') if s['meter_id'] == meter_id]
+        same_day = [s for s in readings if s['reading_date'] == reading_date]
+        if same_day:
+            # With the IDs: after saving, the text reads differently, so a
+            # repeated consent no longer matches (Review S4-6).
+            ids = ', '.join(str(s['id']) for s in same_day)
+            concerns.append(f'Für diesen Zähler gibt es am {_format_date(reading_date)} schon einen Stand '
+                            f'(Stand {ids}).')
+        previous = max((s for s in readings if s['reading_date'] < reading_date), key=lambda s: s['reading_date'],
+                       default=None)
+        following = min((s for s in readings if s['reading_date'] > reading_date), key=lambda s: s['reading_date'],
+                        default=None)
+        for new, field, name in ((value, 'value', 'Stand'), (value_off_peak, 'value_nt', 'NT-Stand')):
+            earlier = previous.get(field) if previous else None
+            later = following.get(field) if following else None
+            if new is not None and earlier is not None and new < earlier:
+                concerns.append(f'Der {name} {_format_reading(new)} ist kleiner als der vorige vom '
+                                f'{_format_date(previous["reading_date"])} ({_format_reading(earlier)}). Ein Zähler '
+                                'läuft nicht rückwärts.')
+            if new is not None and later is not None and new > later:
+                concerns.append(f'Der {name} {_format_reading(new)} ist größer als der folgende vom '
+                                f'{_format_date(following["reading_date"])} ({_format_reading(later)}).')
+        try:
+            plausibility = await nkf.post('/api/readings/check_plausibility',
+                                          {'meter_id': meter_id, 'reading_date': reading_date, 'value': value})
+        except NkfError as error:
+            raise ToolError(str(error)) from error
+        if plausibility.get('status') == 'warning' and plausibility.get('message'):
+            concerns.append(plausibility['message'])
+        new_values = _format_reading(value) + (f' / NT {_format_reading(value_off_peak)}'
+                                               if value_off_peak is not None else '')
+        return _ask(ctx, f'Neuer Zählerstand {new_values} am {_format_date(reading_date)}, Zähler {meter_id}.',
+                    concerns)
+
+    @tool(server, 'Zählerstand erfassen', CREATE_ONLY, meta=meta)
+    @report_errors
+    async def record_meter_reading(
+        meter_id: MeterId,
+        reading_date: IsoDate,
+        value: Annotated[float, Field(ge=0, description='abgelesener Stand (beim Zweitarifzähler: Haupttarif)')],
+        decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_reading)],
+        value_off_peak: Annotated[float | None, Field(ge=0, description='Nebentarif, nur bei Zweitarifzählern')] = None,
+        interim_reading: Annotated[bool, Field(
+            description='Stand zum Datum eines Mieterwechsels (§ 9b HeizkostenV)')] = False,
+        confirmed: Confirmed = False,
+    ) -> RecordResult:
+        """Legt in NebenkostenFix einen abgelesenen Zählerstand an (schreibt, ändert nichts Bestehendes). Vorher
+        wird geprüft, ob er zu den bisherigen Ständen passt; bei Bedenken wird nachgefragt. Zähler selbst legt
+        nur der Mensch an: gibt es keinen passenden Zähler, sag das, statt etwas anderes zu erfassen."""
+        result = _decide(decision, confirmed)
+        if not result.save:
+            return result.response
+        payload = _without_none({'meter_id': meter_id, 'reading_date': reading_date, 'value': value,
+                                 'value_nt': value_off_peak,
+                                 'ablesungsart': 'zwischenablesung' if interim_reading else 'ablesung',
+                                 'trotzdem': True if result.despite_concerns else None})
+        try:
+            return _saved(await nkf.post('/api/readings', payload), result)
+        except NkfConfirmationRequired as confirmation:
+            # A confirmation request the precheck does not know. A second call
+            # would not find it either; say so honestly instead of looping.
+            return RecordResult(saved=False, id=None, concerns=[str(confirmation)], note=(
+                'Nicht gespeichert. NebenkostenFix fragt nach, und diese Rückfrage kann der MCP-Server nicht '
+                'weitergeben. Zeig sie dem Menschen; er kann den Stand in NebenkostenFix selbst eintragen und dort '
+                'bestätigen.'))
+
+    # --- Invoice ------------------------------------------------------------
+
+    async def precheck_invoice(property_id: int, cost_category_id: int, amount: Decimal, start_date: str, end_date: str,
+                               invoice_number: str | None, apartment_id: int | None, invoice_document_id: int | None,
+                               receipt_path: str | None, section_35a_category: str | None, labor_cost: Decimal | None,
+                               ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+        # First what can never be right, then the question to the human:
+        # otherwise they say "yes, save" and get an error afterwards.
+        if end_date < start_date:
+            raise ToolError(f'Das Ende des Zeitraums ({end_date}) liegt vor dem Beginn ({start_date}).')
+        if receipt_path and invoice_document_id is not None:
+            raise ToolError('Entweder receipt_path (eigener Beleg) oder invoice_document_id (vorhandener '
+                            'Sammelbeleg), nicht beides.')
+        if (section_35a_category is None) != (labor_cost is None):
+            raise ToolError('section_35a_category und labor_cost gehören zusammen (§ 35a EStG): beide angeben oder '
+                            'keins.')
+        if receipt_path:
+            _read_receipt(receipt_path)
+        if invoice_document_id is not None and not any(
+                b['id'] == invoice_document_id and b.get('property_id') == property_id
+                for b in await _get('/api/invoice_documents')):
+            raise ToolError(f'Sammelbeleg {invoice_document_id} gehört nicht zur Immobilie {property_id} '
+                            '(siehe list_invoice_documents).')
+        if apartment_id is not None and not any(
+                w['id'] == apartment_id for w in await _get(f'/api/properties/{property_id}/apartments')):
+            raise ToolError(f'Wohnung {apartment_id} gehört nicht zur Immobilie {property_id} (siehe list_apartments).')
+
+        new_number = (invoice_number or '').strip()
+        concerns = []
+        for r in await _get('/api/invoices'):
+            if r['property_id'] != property_id:
+                continue
+            number = (r.get('invoice_number') or '').strip()
+            same_number = bool(new_number) and number == new_number
+            # With the apartment: the same maintenance for ten apartments is not a duplicate.
+            same_item = (r['category_id'] == cost_category_id and as_amount(r['amount']) == amount
+                         and r.get('start_date') == start_date and r.get('end_date') == end_date
+                         and r.get('apartment_id') == apartment_id)
+            if same_number or same_item:
+                cost_category = r.get('category_name') or f'Kostenart {r["category_id"]}'
+                parts = [cost_category, f'{format_money(r["amount"])} €',
+                         f'{r.get("start_date")} bis {r.get("end_date")}']
+                if number:
+                    parts.append(f'Nr. {number}')
+                concerns.append(f'Rechnung {r["id"]} ({", ".join(parts)}) gibt es schon.')
+        new = f'Neue Rechnung: Kostenart {cost_category_id}, {format_money(amount)} €, {start_date} bis {end_date}'
+        if new_number:
+            new += f', Nr. {new_number}'
+        return _ask(ctx, new + '.', concerns)
+
+    @tool(server, 'Rechnung erfassen', CREATE_ONLY, meta=meta)
+    @report_errors
+    async def record_invoice(
+        property_id: PropertyId,
+        cost_category_id: Annotated[int, Field(description='ID der Kostenart, siehe Werkzeug list_cost_categories')],
+        amount: Amount,
+        start_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Beginn des Leistungszeitraums')],
+        end_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Ende des Leistungszeitraums')],
+        decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_invoice)],
+        invoice_number: Annotated[str | None, Field(max_length=100)] = None,
+        invoice_date: Annotated[str | None, Field(pattern=r'^\d{4}-\d{2}-\d{2}$')] = None,
+        description: Annotated[str | None, Field(max_length=500)] = None,
+        provider_id: Annotated[int | None, Field(description='siehe Werkzeug list_providers')] = None,
+        apartment_id: Annotated[int | None, Field(
+            description='nur wenn die Rechnung allein eine Wohnung betrifft')] = None,
+        invoice_document_id: Annotated[int | None, Field(
+            description='Beleg, auf dem diese Rechnung steht, siehe list_invoice_documents')] = None,
+        heating_system_id: Annotated[int | None, Field(
+            description='bei Heizkosten: die Anlage, zusammen mit heating_cost_type')] = None,
+        heating_cost_type: Annotated[HeatingCostType | None, Field(
+            description='bei Heizkosten: Posten nach § 7 Abs. 2 HeizkostenV')] = None,
+        base_price: OptionalAmount = None,
+        section_35a_category: Annotated[Section35aCategory | None, Field(
+            description='§ 35a EStG: haushaltsnahe Dienstleistung oder Handwerkerleistung, nur mit labor_cost')] = None,
+        labor_cost: Annotated[OptionalAmount, Field(
+            description='Arbeitskosten nach § 35a EStG, nur mit section_35a_category')] = None,
+        co2_cost: Annotated[OptionalAmount, Field(description='CO2-Kosten auf der Brennstoffrechnung')] = None,
+        co2_emission_kg: Annotated[float | None, Field(ge=0)] = None,
+        receipt_path: Annotated[ReceiptPath | None, Field(
+            description='Original der Rechnung als Datei; wird hochgeladen und mit der Rechnung verknüpft. '
+                        'Steht die Rechnung auf einem Beleg mit mehreren Rechnungen: upload_invoice_document '
+                        'und invoice_document_id nutzen.')] = None,
+        confirmed: Confirmed = False,
+    ) -> RecordResult:
+        """Legt in NebenkostenFix eine Rechnung (Kosten einer Immobilie) an, auf Wunsch mit dem Beleg als Datei
+        (schreibt, ändert nichts Bestehendes). Gibt es schon eine Rechnung mit derselben Nummer oder mit gleicher
+        Kostenart, gleichem Betrag, Zeitraum und Wohnung, wird vorher nachgefragt. Den Inhalt eines Belegs liest du
+        selbst; NebenkostenFix hat keine Texterkennung."""
+        result = _decide(decision, confirmed)
+        if not result.save:
+            return result.response
+        receipt = _read_receipt(receipt_path) if receipt_path else None
+        payload = _without_none({
+            'property_id': property_id, 'category_id': cost_category_id, 'amount': format_money(amount),
+            'start_date': start_date, 'end_date': end_date, 'invoice_number': (invoice_number or '').strip() or None,
+            'rechnungsdatum': invoice_date, 'description': description, 'provider_id': provider_id,
+            'apartment_id': apartment_id, 'invoice_document_id': invoice_document_id,
+            'heizungsanlage_id': heating_system_id, 'heizkostenart': heating_cost_type,
+            'grundpreis': format_money(base_price), 'art_35a': section_35a_category,
+            'lohnanteil': format_money(labor_cost),
+            'co2_kosten': format_money(co2_cost), 'co2_emission_kg': co2_emission_kg,
+        })
+        # Never rechnungsdatum_fuer_beleg: it would write into invoices that
+        # already exist, and is locked for API keys.
+        if receipt is not None:
+            response = await nkf.post('/api/invoices', form=payload, files=receipt.as_upload())
+        else:
+            response = await nkf.post('/api/invoices', payload)
+        return _saved(response, result)
+
+    # --- Invoice document -----------------------------------------------------
+
+    async def precheck_invoice_document(property_id: int, receipt_path: str,
+                                        ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+        receipt = _read_receipt(receipt_path)
+        stem = _name_core(receipt.filename)
+        concerns = [f'Sammelbeleg {b["id"]} „{b.get("filename")}“ gibt es für diese Immobilie schon.'
+                    for b in await _get('/api/invoice_documents')
+                    if b.get('property_id') == property_id and _name_core(b.get('filename') or '') == stem]
+        return _ask(ctx, f'Neuer Sammelbeleg „{receipt.filename}“ für Immobilie {property_id}.', concerns)
+
+    @tool(server, 'Sammelbeleg hochladen', CREATE_ONLY, meta=meta)
+    @report_errors
+    async def upload_invoice_document(
+        property_id: PropertyId,
+        receipt_path: ReceiptPath,
+        decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_invoice_document)],
+        description: Annotated[str | None, Field(max_length=1000)] = None,
+        confirmed: Confirmed = False,
+    ) -> RecordResult:
+        """Lädt einen Beleg mit mehreren Rechnungen (z. B. Jahresabrechnung der Stadtwerke) zu einer Immobilie
+        hoch (schreibt, ändert nichts Bestehendes). Danach legst du jede Rechnung darauf mit record_invoice und
+        invoice_document_id an."""
+        result = _decide(decision, confirmed)
+        if not result.save:
+            return result.response
+        receipt = _read_receipt(receipt_path)
+        response = await nkf.post('/api/invoice_documents', form=_without_none(
+            {'property_id': property_id, 'description': description}), files=receipt.as_upload())
+        recorded = _saved(response, result)
+        if recorded.id is not None:
+            recorded.note = (f'{recorded.note} Lege die Rechnungen dieses Belegs mit record_invoice und '
+                             f'invoice_document_id={recorded.id} an.')
+        return recorded
