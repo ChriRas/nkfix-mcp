@@ -47,6 +47,14 @@ async def test_create_payment_find_it_again_and_detect_duplicate(instance):
         assert second['saved'] is False
         assert second['concerns']
 
+        # The human agrees: with the code from the response it is saved.
+        third = await call(mcp, 'record_payment', **payment, approval_code=second['approval_code'])
+        assert third['saved'] is True and third['id'] not in (None, first['id'])
+
+        # The same code a second time: the new payment is a new concern.
+        fourth = await call(mcp, 'record_payment', **payment, approval_code=second['approval_code'])
+        assert fourth['saved'] is False and 'passt nicht' in fourth['note']
+
 
 async def test_backwards_meter_reading_is_queried_forwards_is_saved(instance):
     async with connected(instance, 'erfassen') as mcp:
@@ -61,7 +69,7 @@ async def test_backwards_meter_reading_is_queried_forwards_is_saved(instance):
         assert backwards['saved'] is False
         assert any('rückwärts' in b for b in backwards['concerns'])
 
-        # Without confirmed: a reading that runs forwards needs no confirmation prompt.
+        # Without approval: a reading that runs forwards needs no confirmation prompt.
         forwards = await call(mcp, 'record_meter_reading', meter_id=meter['id'],
                               reading_date=reading_date.isoformat(), value=last['value'] + 0.5)
         assert forwards['saved'] is True, forwards
@@ -74,9 +82,12 @@ async def test_instance_rejects_meter_reading_in_the_future(instance):
     async with connected(instance, 'erfassen') as mcp:
         house = next(i['id'] for i in (await call(mcp, 'list_properties'))['items'] if i['is_example'])
         meter = (await call(mcp, 'list_meters', property_id=house))['items'][0]
-        result = await mcp.call_tool('record_meter_reading', {
-            'meter_id': meter['id'], 'reading_date': (TODAY + timedelta(days=30)).isoformat(), 'value': 1e9,
-            'confirmed': True})
+        reading = {'meter_id': meter['id'], 'reading_date': (TODAY + timedelta(days=30)).isoformat(), 'value': 1e9}
+        result = await mcp.call_tool('record_meter_reading', reading)
+        if not result.is_error:
+            # If plausibility warns, it only reaches the instance with approval.
+            approval_code = result.structured_content['approval_code']
+            result = await mcp.call_tool('record_meter_reading', {**reading, 'approval_code': approval_code})
     assert result.is_error
     assert 'Zukunft' in result.content[0].text
 

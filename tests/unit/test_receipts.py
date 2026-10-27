@@ -152,7 +152,8 @@ async def test_upload_invoice_document(tmp_path):
                         receipt_path=str(tmp_path / 'Jahresabrechnung Stadtwerke.pdf'), description='Strom und Gas')
     assert not result.is_error, result.content[0].text
     assert result.structured_content == {'saved': True, 'id': 9, 'concerns': [], 'note': (
-        'Gespeichert. Lege die Rechnungen dieses Belegs mit record_invoice und invoice_document_id=9 an.')}
+        'Gespeichert. Lege die Rechnungen dieses Belegs mit record_invoice und invoice_document_id=9 an.'),
+        'approval_code': None}
     fields, files = multipart(fake.sent('POST', '/api/invoice_documents')[0])
     assert fields == {'property_id': '1', 'description': 'Strom und Gas'}
     assert files['file'][0] == 'Jahresabrechnung Stadtwerke.pdf'
@@ -167,6 +168,21 @@ async def test_invoice_document_with_same_name_asks_for_confirmation(tmp_path):
     assert data['saved'] is False
     assert any('Sammelbeleg 3' in b for b in data['concerns'])
     assert fake.sent('POST', '/api/invoice_documents') == []
+
+
+async def test_approval_code_of_an_invoice_document_only_applies_to_the_same_content(tmp_path):
+    file = tmp_path / 'stadtwerke-2025.pdf'
+    file.write_bytes(PDF)
+    fake = sample_data()
+    first = (await call(fake, 'upload_invoice_document', property_id=1, receipt_path=str(file))).structured_content
+    file.write_bytes(PDF + b'anders')
+    second = await call(fake, 'upload_invoice_document', property_id=1, receipt_path=str(file),
+                        approval_code=first['approval_code'])
+    assert second.structured_content['saved'] is False
+    third = await call(fake, 'upload_invoice_document', property_id=1, receipt_path=str(file),
+                       approval_code=second.structured_content['approval_code'])
+    assert third.structured_content['saved'] is True
+    assert len(fake.sent('POST', '/api/invoice_documents')) == 1
 
 
 async def test_receipt_dir_from_config_applies(tmp_path):

@@ -6,11 +6,15 @@ NebenkostenFix. That is why everything is checked before creating
 (duplicate, implausible reading), and if there are concerns, the human decides:
 
 - If the client can ask (MCP elicitation, e.g. Claude Code), the server asks
-  the human directly. Their no stands, even if the model sends
-  ``confirmed=true`` along.
-- Otherwise "not saved" comes back with the concerns. The model is to ask
-  the human and send ``confirmed=true`` only with their consent. This
-  cannot be enforced; the description says it clearly.
+  the human directly. Their no stands, even if the model sends an approval
+  code along.
+- Otherwise "not saved" comes back with the concerns and an approval code.
+  The model is to ask the human and, only with their consent, repeat the same
+  call with ``approval_code=<code>``. The code matches exactly these arguments
+  (for a receipt also its content) and these concerns (review S4-2): it cannot
+  be set in advance, and if a value changes or a concern is added before the
+  second call, it no longer applies. Even the code does not prove that the
+  human was actually asked.
 
 The confirmation prompt sits in front of the tool as a resolver (``Resolve``):
 that way it works over both protocol generations of MCP, the old one with a
@@ -21,7 +25,11 @@ local functions in ``register``, and the SDK evaluates the annotations
 only later, where it no longer sees these names.
 """
 
+import hashlib
+import hmac
+import json
 import re
+import secrets
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -81,9 +89,18 @@ Amount = Annotated[Decimal, BeforeValidator(_parse_amount),
                                      '"1.500,00"')]
 OptionalAmount = Annotated[Decimal | None, BeforeValidator(lambda w: None if w in (None, '') else _parse_amount(w)),
                            Field(description='Betrag in Euro')]
-Confirmed = Annotated[bool, Field(description=(
-    'Nur auf true setzen, nachdem du dem Menschen die Bedenken aus einer vorigen Antwort gezeigt hast und er dem '
-    'Speichern ausdrücklich zugestimmt hat. Nie vorab und nie von dir aus.'))]
+ApprovalCode = Annotated[str | None, Field(max_length=20, description=(
+    'Freigabecode aus einer vorigen Antwort mit saved=false. Nur mitschicken, nachdem du dem Menschen die '
+    'Bedenken gezeigt hast und er dem Speichern ausdrücklich zugestimmt hat. Nie vorab und nie von dir aus.'))]
+
+# New on every start: a code is only valid in this process and cannot be
+# computed in advance from the source.
+_SALT = secrets.token_bytes(16)
+
+
+def _approval_code(values: tuple[Any, ...], concerns: list[str]) -> str:
+    raw = json.dumps([values, concerns], default=str, ensure_ascii=False)
+    return hmac.new(_SALT, raw.encode(), 'sha256').hexdigest()[:8]
 
 
 class ConfirmationPrompt(BaseModel):
@@ -95,6 +112,7 @@ class PrecheckResult(BaseModel):
 
     concerns: list[str]
     can_elicit: bool
+    approval_code: str | None = None
 
 
 class RecordResult(BaseModel):
@@ -102,6 +120,8 @@ class RecordResult(BaseModel):
     id: int | None = Field(description='ID des neuen Eintrags')
     concerns: list[str] = Field(description='was gegen das Speichern sprach (auch wenn trotzdem gespeichert wurde)')
     note: str
+    approval_code: str | None = Field(default=None, description=(
+        'Code für den zweiten Aufruf, falls der Mensch trotz der Bedenken speichern will'))
 
 
 class Decision(BaseModel):
@@ -117,16 +137,18 @@ def _can_elicit(ctx: Context) -> bool:
     return elicitation is not None and (elicitation.form is not None or elicitation.url is None)
 
 
-def _ask(ctx: Context, summary: str, concerns: list[str]) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+def _ask(ctx: Context, summary: str, concerns: list[str],
+         values: tuple[Any, ...]) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+    """``values``: the tool and all arguments the approval code is bound to."""
     if not concerns:
         return PrecheckResult(concerns=[], can_elicit=True)
     if not _can_elicit(ctx):
-        return PrecheckResult(concerns=concerns, can_elicit=False)
+        return PrecheckResult(concerns=concerns, can_elicit=False, approval_code=_approval_code(values, concerns))
     bullets = '\n'.join(f'• {b}' for b in concerns)
     return Elicit(f'{summary}\n\nBedenken:\n{bullets}\n\nTrotzdem speichern?', ConfirmationPrompt)
 
 
-def _decide(decision: ElicitationResult[ConfirmationPrompt], confirmed: bool) -> Decision:
+def _decide(decision: ElicitationResult[ConfirmationPrompt], approval_code: str | None) -> Decision:
     if decision.action != 'accept':
         return Decision(save=False, response=RecordResult(
             saved=False, id=None, concerns=[],
@@ -140,20 +162,29 @@ def _decide(decision: ElicitationResult[ConfirmationPrompt], confirmed: bool) ->
                                                           note='Nicht gespeichert: Der Mensch hat abgelehnt.'))
     if not data.concerns:
         return Decision(save=True)
-    if confirmed:
+    # As bytes: compare_digest raises on str with umlauts ("bestätigt").
+    if approval_code is not None and hmac.compare_digest(approval_code.strip().lower().encode(),
+                                                         data.approval_code.encode()):
         return Decision(save=True, despite_concerns=True, concerns=data.concerns)
+    note = (f'Zeig dem Menschen die Bedenken und frag, ob trotzdem gespeichert werden soll. Nur wenn er '
+            f"zustimmt: dasselbe Werkzeug mit denselben Werten und approval_code='{data.approval_code}' erneut "
+            f'aufrufen.')
+    if approval_code is not None:
+        note = ('Nicht gespeichert: Der Freigabecode passt nicht (mehr). Er gilt nur für die Werte und Bedenken '
+                'der Antwort, aus der er stammt; die haben sich geändert, der Server wurde neu gestartet oder '
+                f'der Code ist geraten. {note}')
+    else:
+        note = f'Nicht gespeichert. {note}'
     return Decision(save=False, response=RecordResult(
-        saved=False, id=None, concerns=data.concerns,
-        note=('Nicht gespeichert. Zeig dem Menschen die Bedenken und frag, ob trotzdem gespeichert werden soll. '
-              'Nur wenn er zustimmt: dasselbe Werkzeug mit denselben Werten und confirmed=true erneut aufrufen.')))
+        saved=False, id=None, concerns=data.concerns, note=note, approval_code=data.approval_code))
 
 
 def _saved(response: Any, decision: Decision) -> RecordResult:
     new_id = response.get('id') if isinstance(response, dict) else None
     if decision.concerns:
-        # Via confirmed=true: the concerns belong in the response so that the
-        # human sees them, even if the model clicked them away beforehand.
-        note = 'Gespeichert trotz Bedenken (confirmed=true). Nenne dem Menschen die Bedenken.'
+        # Via the approval code: the concerns belong in the response so that the
+        # human sees them, even if the model did not pass them on.
+        note = 'Gespeichert trotz Bedenken (Freigabecode). Nenne dem Menschen die Bedenken.'
     elif decision.despite_concerns:
         note = 'Gespeichert, nachdem der Mensch im Dialog zugestimmt hat.'
     else:
@@ -207,6 +238,10 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         except ReceiptError as error:
             raise ToolError(str(error)) from error
 
+    def _fingerprint(receipt: Receipt | None) -> str | None:
+        # For the approval code: different content under the same path is a different receipt.
+        return hashlib.sha256(receipt.content).hexdigest() if receipt is not None else None
+
     async def _get(path: str) -> Any:
         # Errors in the resolver reach the model only as ToolError.
         try:
@@ -225,7 +260,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
             if z['tenant_id'] == tenant_id and z['payment_date'] == payment_date and z['type'] == payment_type
             and as_amount(z['amount']) == amount]
         return _ask(ctx, f'Neue Zahlung: {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)}, '
-                         f'Mieter {tenant_id}.', concerns)
+                         f'Mieter {tenant_id}.', concerns, ('payment', tenant_id, amount, payment_date, payment_type))
 
     @tool(server, 'Zahlung erfassen', CREATE_ONLY, meta=meta)
     @report_errors
@@ -235,11 +270,11 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         payment_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Zahlungseingang, YYYY-MM-DD')],
         payment_type: Annotated[PaymentType, Field(description=PAYMENT_TYPES_HELP)],
         decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_payment)],
-        confirmed: Confirmed = False,
+        approval_code: ApprovalCode = None,
     ) -> RecordResult:
         """Legt in NebenkostenFix eine eingegangene Zahlung eines Mieters an (schreibt, ändert nichts
         Bestehendes). Gibt es dieselbe Zahlung schon, wird vorher nachgefragt."""
-        result = _decide(decision, confirmed)
+        result = _decide(decision, approval_code)
         if not result.save:
             return result.response
         return _saved(await nkf.post('/api/payments', {
@@ -249,7 +284,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
     # --- Meter reading -------------------------------------------------------
 
     async def precheck_reading(meter_id: int, reading_date: str, value: float, value_off_peak: float | None,
-                               ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+                               interim_reading: bool, ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         concerns: list[str] = []
         # The same rules NebenkostenFix uses to answer 409 "nachfrage"
         # when saving (app.py, _ablesung_pruefen): here beforehand, so that
@@ -286,7 +321,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         new_values = _format_reading(value) + (f' / NT {_format_reading(value_off_peak)}'
                                                if value_off_peak is not None else '')
         return _ask(ctx, f'Neuer Zählerstand {new_values} am {_format_date(reading_date)}, Zähler {meter_id}.',
-                    concerns)
+                    concerns, ('meter_reading', meter_id, reading_date, value, value_off_peak, interim_reading))
 
     @tool(server, 'Zählerstand erfassen', CREATE_ONLY, meta=meta)
     @report_errors
@@ -298,12 +333,12 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         value_off_peak: Annotated[float | None, Field(ge=0, description='Nebentarif, nur bei Zweitarifzählern')] = None,
         interim_reading: Annotated[bool, Field(
             description='Stand zum Datum eines Mieterwechsels (§ 9b HeizkostenV)')] = False,
-        confirmed: Confirmed = False,
+        approval_code: ApprovalCode = None,
     ) -> RecordResult:
         """Legt in NebenkostenFix einen abgelesenen Zählerstand an (schreibt, ändert nichts Bestehendes). Vorher
         wird geprüft, ob er zu den bisherigen Ständen passt; bei Bedenken wird nachgefragt. Zähler selbst legt
         nur der Mensch an: gibt es keinen passenden Zähler, sag das, statt etwas anderes zu erfassen."""
-        result = _decide(decision, confirmed)
+        result = _decide(decision, approval_code)
         if not result.save:
             return result.response
         payload = _without_none({'meter_id': meter_id, 'reading_date': reading_date, 'value': value,
@@ -323,8 +358,11 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
     # --- Invoice ------------------------------------------------------------
 
     async def precheck_invoice(property_id: int, cost_category_id: int, amount: Decimal, start_date: str, end_date: str,
-                               invoice_number: str | None, apartment_id: int | None, invoice_document_id: int | None,
-                               receipt_path: str | None, section_35a_category: str | None, labor_cost: Decimal | None,
+                               invoice_number: str | None, invoice_date: str | None, description: str | None,
+                               provider_id: int | None, apartment_id: int | None, invoice_document_id: int | None,
+                               heating_system_id: int | None, heating_cost_type: str | None,
+                               base_price: Decimal | None, section_35a_category: str | None, labor_cost: Decimal | None,
+                               co2_cost: Decimal | None, co2_emission_kg: float | None, receipt_path: str | None,
                                ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         # First what can never be right, then the question to the human:
         # otherwise they say "yes, save" and get an error afterwards.
@@ -336,8 +374,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         if (section_35a_category is None) != (labor_cost is None):
             raise ToolError('section_35a_category und labor_cost gehören zusammen (§ 35a EStG): beide angeben oder '
                             'keins.')
-        if receipt_path:
-            _read_receipt(receipt_path)
+        receipt = _read_receipt(receipt_path) if receipt_path else None
         if invoice_document_id is not None and not any(
                 b['id'] == invoice_document_id and b.get('property_id') == property_id
                 for b in await _get('/api/invoice_documents')):
@@ -368,7 +405,11 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         new = f'Neue Rechnung: Kostenart {cost_category_id}, {format_money(amount)} €, {start_date} bis {end_date}'
         if new_number:
             new += f', Nr. {new_number}'
-        return _ask(ctx, new + '.', concerns)
+        return _ask(ctx, new + '.', concerns, (
+            'invoice', property_id, cost_category_id, amount, start_date, end_date, invoice_number, invoice_date,
+            description, provider_id, apartment_id, invoice_document_id, heating_system_id, heating_cost_type,
+            base_price, section_35a_category, labor_cost, co2_cost, co2_emission_kg, receipt_path,
+            _fingerprint(receipt)))
 
     @tool(server, 'Rechnung erfassen', CREATE_ONLY, meta=meta)
     @report_errors
@@ -402,13 +443,13 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
             description='Original der Rechnung als Datei; wird hochgeladen und mit der Rechnung verknüpft. '
                         'Steht die Rechnung auf einem Beleg mit mehreren Rechnungen: upload_invoice_document '
                         'und invoice_document_id nutzen.')] = None,
-        confirmed: Confirmed = False,
+        approval_code: ApprovalCode = None,
     ) -> RecordResult:
         """Legt in NebenkostenFix eine Rechnung (Kosten einer Immobilie) an, auf Wunsch mit dem Beleg als Datei
         (schreibt, ändert nichts Bestehendes). Gibt es schon eine Rechnung mit derselben Nummer oder mit gleicher
         Kostenart, gleichem Betrag, Zeitraum und Wohnung, wird vorher nachgefragt. Den Inhalt eines Belegs liest du
         selbst; NebenkostenFix hat keine Texterkennung."""
-        result = _decide(decision, confirmed)
+        result = _decide(decision, approval_code)
         if not result.save:
             return result.response
         receipt = _read_receipt(receipt_path) if receipt_path else None
@@ -432,14 +473,15 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
 
     # --- Invoice document -----------------------------------------------------
 
-    async def precheck_invoice_document(property_id: int, receipt_path: str,
+    async def precheck_invoice_document(property_id: int, receipt_path: str, description: str | None,
                                         ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         receipt = _read_receipt(receipt_path)
         stem = _name_core(receipt.filename)
         concerns = [f'Sammelbeleg {b["id"]} „{b.get("filename")}“ gibt es für diese Immobilie schon.'
                     for b in await _get('/api/invoice_documents')
                     if b.get('property_id') == property_id and _name_core(b.get('filename') or '') == stem]
-        return _ask(ctx, f'Neuer Sammelbeleg „{receipt.filename}“ für Immobilie {property_id}.', concerns)
+        return _ask(ctx, f'Neuer Sammelbeleg „{receipt.filename}“ für Immobilie {property_id}.', concerns,
+                    ('invoice_document', property_id, receipt_path, description, _fingerprint(receipt)))
 
     @tool(server, 'Sammelbeleg hochladen', CREATE_ONLY, meta=meta)
     @report_errors
@@ -448,12 +490,12 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         receipt_path: ReceiptPath,
         decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_invoice_document)],
         description: Annotated[str | None, Field(max_length=1000)] = None,
-        confirmed: Confirmed = False,
+        approval_code: ApprovalCode = None,
     ) -> RecordResult:
         """Lädt einen Beleg mit mehreren Rechnungen (z. B. Jahresabrechnung der Stadtwerke) zu einer Immobilie
         hoch (schreibt, ändert nichts Bestehendes). Danach legst du jede Rechnung darauf mit record_invoice und
         invoice_document_id an."""
-        result = _decide(decision, confirmed)
+        result = _decide(decision, approval_code)
         if not result.save:
             return result.response
         receipt = _read_receipt(receipt_path)

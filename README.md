@@ -36,7 +36,9 @@ Korrekturen machst du in NebenkostenFix. Mit einem Zugriffsschlüssel verweigert
 **Rückfragen beim Erfassen:** Gibt es Bedenken, etwa dieselbe Zahlung schon, einen Zählerstand unter dem
 vorigen oder eine Rechnung mit derselben Nummer, legt der Server nichts an, sondern fragt nach.
 - Claude Code zeigt dir die Frage direkt.
-- Andere Clients geben sie an den Assistenten weiter, und der muss dich fragen.
+- Andere Clients geben sie an den Assistenten weiter, und der muss dich fragen. Sagst du Ja, speichert er
+  mit einem Freigabecode aus der Rückfrage. Der gilt nur für genau diese Werte und Bedenken; ändert sich
+  etwas, fragt der Server erneut.
 - Claude Code fragt außerdem bei jedem Erfassen nach einer Freigabe, auch wenn du die Werkzeuge allgemein
   erlaubt hast. Abschalten lässt sich das mit `NKF_NO_RECORD_PROMPT=1`.
 

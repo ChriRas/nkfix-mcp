@@ -2,7 +2,8 @@
 
 The confirmation runs via MCP elicitation if the client supports it. If it
 does not, the result is "not saved, confirmation needed", and only a second
-call with ``confirmed=true`` saves.
+call with the approval code from the first response saves. The code matches
+exactly these arguments and concerns; setting it in advance or guessing fails.
 """
 
 import re
@@ -121,18 +122,92 @@ async def test_duplicate_payment_without_elicitation_is_not_saved_but_asks_for_c
     assert data['saved'] is False
     assert data['id'] is None
     assert any('gibt es schon' in b for b in data['concerns'])
-    assert 'confirmed' in data['note']
+    assert re.fullmatch(r'[0-9a-f]{8}', data['approval_code'])
+    assert f"approval_code='{data['approval_code']}'" in data['note']
     assert fake.sent('POST', '/api/payments') == []
 
 
-async def test_duplicate_payment_with_confirmation_is_saved_and_lists_concerns():
+DUPLICATE = {'tenant_id': 1, 'amount': 650, 'payment_date': '2025-11-03', 'payment_type': 'Miete'}
+
+
+async def test_duplicate_payment_with_approval_code_is_saved_and_lists_concerns():
     fake = sample_data()
-    data = await call(fake, 'record_payment', tenant_id=1, amount=650, payment_date='2025-11-03',
-                      payment_type='Miete', confirmed=True)
+    code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
+    data = await call(fake, 'record_payment', **DUPLICATE, approval_code=code)
     assert data['saved'] is True
     assert any('gibt es schon' in b for b in data['concerns'])
     assert 'trotz Bedenken' in data['note']
+    assert data['approval_code'] is None
     assert len(fake.sent('POST', '/api/payments')) == 1
+
+
+@pytest.mark.parametrize('guessed', ['00000000', 'true', 'ja', 'bestätigt', ''])
+async def test_code_set_in_advance_or_guessed_does_not_save(guessed):
+    fake = sample_data()
+    data = await call(fake, 'record_payment', **DUPLICATE, approval_code=guessed)
+    assert data['saved'] is False
+    assert 'passt nicht' in data['note']
+    assert re.fullmatch(r'[0-9a-f]{8}', data['approval_code'])
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_approval_code_only_applies_to_the_same_values():
+    fake = sample_data().json('GET', '/api/payments', [PAYMENT, {**PAYMENT, 'id': 2, 'amount': 700.0}])
+    code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
+    data = await call(fake, 'record_payment', **{**DUPLICATE, 'amount': 700}, approval_code=code)
+    assert data['saved'] is False
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_approval_code_no_longer_applies_when_new_concerns_appear():
+    fake = sample_data()
+    code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
+    fake.json('GET', '/api/payments', [PAYMENT, {**PAYMENT, 'id': 2}])
+    data = await call(fake, 'record_payment', **DUPLICATE, approval_code=code)
+    assert data['saved'] is False
+    assert any('Zahlung 2' in b for b in data['concerns'])
+    assert data['approval_code'] != code
+
+
+async def test_approval_code_ignores_case_and_whitespace():
+    fake = sample_data()
+    code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
+    data = await call(fake, 'record_payment', **DUPLICATE, approval_code=f' {code.upper()} ')
+    assert data['saved'] is True
+
+
+async def test_approval_code_of_one_tool_does_not_apply_to_another():
+    fake = sample_data().json('GET', '/api/readings', [{**READING, 'value': 900.0}])
+    code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=1,
+                      approval_code=code)
+    assert data['saved'] is False
+    assert 'passt nicht' in data['note']
+
+
+SAME_NUMBER = {'property_id': 1, 'cost_category_id': 9, 'amount': '100', 'start_date': '2025-01-01',
+               'end_date': '2025-06-30', 'invoice_number': 'WA-2025-17'}
+
+
+async def test_invoice_with_approval_code_is_saved():
+    fake = sample_data()
+    first = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12')
+    assert first['saved'] is False and any('Nr. WA-2025-17' in b for b in first['concerns'])
+    data = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12', approval_code=first['approval_code'])
+    assert data['saved'] is True
+    assert FakeNkf.body(fake.sent('POST', '/api/invoices')[0])['grundpreis'] == '12.00'
+
+
+@pytest.mark.parametrize('changed', [{'amount': '200'}, {'base_price': '13'}, {'description': 'anders'},
+                                     {'provider_id': 4}])
+async def test_approval_code_does_not_apply_to_changed_values_with_the_same_concerns(changed):
+    fake = sample_data()
+    first = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12')
+    data = await call(fake, 'record_invoice', **{**SAME_NUMBER, 'base_price': '12', **changed},
+                      approval_code=first['approval_code'])
+    assert data['concerns'] == first['concerns']
+    assert data['saved'] is False and 'passt nicht' in data['note']
+    assert fake.sent('POST', '/api/invoices') == []
 
 
 # auto = protocol 2026-07-28 (InputRequiredResult), legacy = 2025-11-25 (request from the server).
@@ -151,10 +226,10 @@ async def test_duplicate_payment_asks_the_human_if_the_client_can(mode):
 
 @PROTOCOLS
 @pytest.mark.parametrize(('action', 'save'), [('accept', False), ('decline', True), ('cancel', True)])
-async def test_human_no_applies_even_if_the_model_confirms(action, save, mode):
+async def test_human_no_applies_even_if_the_model_sends_a_code(action, save, mode):
     fake = sample_data()
     data = await call(fake, 'record_payment', answer_with(action, save), mode=mode, tenant_id=1, amount=650,
-                      payment_date='2025-11-03', payment_type='Miete', confirmed=True)
+                      payment_date='2025-11-03', payment_type='Miete', approval_code='00000000')
     assert data['saved'] is False
     assert 'abgelehnt' in data['note']
     assert fake.sent('POST', '/api/payments') == []
@@ -184,7 +259,7 @@ async def test_read_key_on_record_gets_a_clear_message():
 async def test_unremarkable_meter_reading_is_saved_without_trotzdem():
     fake = sample_data()
     data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5)
-    assert data == {'saved': True, 'id': 43, 'concerns': [], 'note': 'Gespeichert.'}
+    assert data == {'saved': True, 'id': 43, 'concerns': [], 'note': 'Gespeichert.', 'approval_code': None}
     assert FakeNkf.body(fake.sent('POST', '/api/readings')[0]) == {
         'meter_id': 5, 'reading_date': '2025-12-31', 'value': 131.5, 'ablesungsart': 'ablesung'}
 
@@ -210,6 +285,23 @@ async def test_plausibility_warning_asks_for_confirmation_and_once_confirmed_is_
     assert data['saved'] is True
     assert 'Abweichung 900 %' in callback.questions[0]
     assert FakeNkf.body(fake.sent('POST', '/api/readings')[0])['trotzdem'] is True
+
+
+async def test_meter_reading_with_approval_code_is_sent_with_trotzdem():
+    fake = sample_data()
+    first = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110)
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110,
+                      approval_code=first['approval_code'])
+    assert data['saved'] is True
+    assert FakeNkf.body(fake.sent('POST', '/api/readings')[0])['trotzdem'] is True
+
+
+async def test_approval_code_does_not_apply_when_the_reading_type_changes():
+    fake = sample_data()
+    first = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110)
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110,
+                      interim_reading=True, approval_code=first['approval_code'])
+    assert data['saved'] is False
 
 
 async def test_confirmation_request_from_instance_despite_precheck_is_passed_on():
@@ -354,11 +446,10 @@ async def test_backwards_off_peak_reading_asks_for_confirmation():
 async def test_unexpected_confirmation_request_from_instance_does_not_loop():
     fake = sample_data().json('POST', '/api/readings', {'error': 'Unbekannte Rückfrage.', 'nachfrage': True},
                               status=409)
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5,
-                      confirmed=True)
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5)
     assert data['saved'] is False
     assert 'selbst eintragen' in data['note']
-    assert 'confirmed=true' not in data['note']
+    assert data['approval_code'] is None and 'approval_code' not in data['note']
 
 
 async def test_labor_cost_requires_section_35a_category():

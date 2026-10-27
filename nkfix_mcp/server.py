@@ -42,8 +42,8 @@ RECORD_INSTRUCTIONS = """\
   upload_invoice_document. Ruf sie nur auf, wenn der Mensch dem Eintrag zugestimmt hat, und nenne ihm
   vorher die Werte. Bei einem Beleg mit mehreren Rechnungen: erst upload_invoice_document, dann jede
   Rechnung mit invoice_document_id.
-- Kommt „saved: false“ mit Bedenken zurück, frag den Menschen. confirmed=true setzt du nur
-  nach seiner ausdrücklichen Zustimmung, nie vorab und nie von dir aus.
+- Kommt „saved: false“ mit Bedenken zurück, frag den Menschen. Den Freigabecode aus der
+  Antwort schickst du nur nach seiner ausdrücklichen Zustimmung mit, nie vorab und nie von dir aus.
 - Lehnt der Mensch ab oder lässt sich etwas nicht erfassen, sag ihm, dass er den Eintrag selbst in
   NebenkostenFix anlegen kann.
 """
