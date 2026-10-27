@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "nkfix": {
+      "type": "stdio",
+      "command": "nkfix-mcp",
+      "env": {
+        "NKF_URL": "${NKF_URL:-http://127.0.0.1:6060}",
+        "NKF_API_KEY": "${NKF_API_KEY}",
+        "NKF_RECEIPT_DIR": "${NKF_RECEIPT_DIR:-}"
+      }
+    }
+  }
+}
