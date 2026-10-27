@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.formatting import ItemList, format_money, in_year, total, truncate
-from nkfix_mcp.tools import READ_ONLY, report_errors, tool
+from nkfix_mcp.tools import READ_ONLY, IsoDate, report_errors, tool
 
 MAX_ITEMS = 100
 # Measured (review S2-6): 100 invoices are about 20,000 tokens, Claude Code warns from 10,000.
@@ -493,8 +493,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     @tool(server, 'Fristen', READ_ONLY)
     @report_errors
     async def list_deadlines(
-        until: Annotated[str | None, Field(description='nur Termine bis zu diesem Datum (YYYY-MM-DD)',
-                                           pattern=r'^\d{4}-\d{2}-\d{2}$')] = None,
+        until: Annotated[IsoDate | None, Field(description='nur Termine bis zu diesem Datum (YYYY-MM-DD)')] = None,
     ) -> ItemList[Deadline]:
         """Anstehende Termine und Fristen: Abrechnungsfristen, Einwendungsfristen, Eichfristen."""
         events = (await nkf.get('/api/fristen')).get('termine') or []

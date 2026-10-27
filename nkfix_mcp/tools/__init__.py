@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar
+from datetime import date
+from typing import Annotated, Any, ParamSpec, TypeVar
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
+from pydantic import AfterValidator, Field
 
 from nkfix_mcp.errors import NkfError
+from nkfix_mcp.receipts import ReceiptError
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -32,14 +35,32 @@ def tool(server: MCPServer, title: str, annotations: ToolAnnotations,
     return server.tool(title=title, annotations=annotations.model_copy(update={'title': title}), meta=meta)
 
 
+def _calendar_day(text: str) -> str:
+    # The pattern alone lets 2025-02-30 through; that would later give a
+    # ValueError without a text for the model, or go to the API as is.
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        raise ValueError(f'{text} ist kein gültiges Datum.') from None
+    return text
+
+
+IsoDate = Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Datum als YYYY-MM-DD'),
+                    AfterValidator(_calendar_day)]
+
+
 def report_errors(tool: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-    """``NkfError`` as ``ToolError``: only its text reaches the model."""
+    """``NkfError`` and ``ReceiptError`` as ``ToolError``: only its text reaches the model.
+
+    Also for the resolvers of the record tools: their errors would otherwise
+    reach the model as "Error executing tool" without a reason.
+    """
 
     @functools.wraps(tool)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             return await tool(*args, **kwargs)
-        except NkfError as error:
+        except (NkfError, ReceiptError) as error:
             raise ToolError(str(error)) from error
 
     return wrapper

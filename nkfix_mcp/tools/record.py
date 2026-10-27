@@ -40,12 +40,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import BaseModel, BeforeValidator, Field
 
-from nkfix_mcp.client import NkfClient, NkfConfirmationRequired, NkfError
+from nkfix_mcp.client import NkfClient, NkfConfirmationRequired
 from nkfix_mcp.formatting import CENT, format_money
 from nkfix_mcp.formatting import amount as as_amount
-from nkfix_mcp.receipts import Receipt, ReceiptError, read_receipt
-from nkfix_mcp.tools import report_errors, tool
-from nkfix_mcp.tools.check import IsoDate, MeterId
+from nkfix_mcp.receipts import Receipt, read_receipt
+from nkfix_mcp.tools import IsoDate, report_errors, tool
+from nkfix_mcp.tools.check import MeterId
 from nkfix_mcp.tools.read import PaymentType, PropertyId, TenantId
 
 CREATE_ONLY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False,
@@ -233,30 +233,21 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
     receipt_dir = nkf.config.receipt_dir
 
     def _read_receipt(path: str) -> Receipt:
-        try:
-            return read_receipt(path, receipt_dir)
-        except ReceiptError as error:
-            raise ToolError(str(error)) from error
+        return read_receipt(path, receipt_dir)
 
     def _fingerprint(receipt: Receipt | None) -> str | None:
         # For the approval code: different content under the same path is a different receipt.
         return hashlib.sha256(receipt.content).hexdigest() if receipt is not None else None
 
-    async def _get(path: str) -> Any:
-        # Errors in the resolver reach the model only as ToolError.
-        try:
-            return await nkf.get(path)
-        except NkfError as error:
-            raise ToolError(str(error)) from error
-
     # --- Payment ------------------------------------------------------------
 
+    @report_errors
     async def precheck_payment(tenant_id: int, amount: Decimal, payment_date: str, payment_type: str,
                                ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         concerns = [
             f'Eine Zahlung über {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)} gibt es '
             f'schon für diesen Mieter (Zahlung {z["id"]}).'
-            for z in await _get('/api/payments')
+            for z in await nkf.get('/api/payments')
             if z['tenant_id'] == tenant_id and z['payment_date'] == payment_date and z['type'] == payment_type
             and as_amount(z['amount']) == amount]
         return _ask(ctx, f'Neue Zahlung: {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)}, '
@@ -267,7 +258,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
     async def record_payment(
         tenant_id: TenantId,
         amount: Amount,
-        payment_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Zahlungseingang, YYYY-MM-DD')],
+        payment_date: Annotated[IsoDate, Field(description='Zahlungseingang, YYYY-MM-DD')],
         payment_type: Annotated[PaymentType, Field(description=PAYMENT_TYPES_HELP)],
         decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_payment)],
         approval_code: ApprovalCode = None,
@@ -283,13 +274,14 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
 
     # --- Meter reading -------------------------------------------------------
 
+    @report_errors
     async def precheck_reading(meter_id: int, reading_date: str, value: float, value_off_peak: float | None,
                                interim_reading: bool, ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         concerns: list[str] = []
         # The same rules NebenkostenFix uses to answer 409 "nachfrage"
         # when saving (app.py, _ablesung_pruefen): here beforehand, so that
         # the human decides and not the model.
-        readings = [s for s in await _get('/api/readings') if s['meter_id'] == meter_id]
+        readings = [s for s in await nkf.get('/api/readings') if s['meter_id'] == meter_id]
         same_day = [s for s in readings if s['reading_date'] == reading_date]
         if same_day:
             # With the IDs: after saving, the text reads differently, so a
@@ -311,11 +303,8 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
             if new is not None and later is not None and new > later:
                 concerns.append(f'Der {name} {_format_reading(new)} ist größer als der folgende vom '
                                 f'{_format_date(following["reading_date"])} ({_format_reading(later)}).')
-        try:
-            plausibility = await nkf.post('/api/readings/check_plausibility',
-                                          {'meter_id': meter_id, 'reading_date': reading_date, 'value': value})
-        except NkfError as error:
-            raise ToolError(str(error)) from error
+        plausibility = await nkf.post('/api/readings/check_plausibility',
+                                      {'meter_id': meter_id, 'reading_date': reading_date, 'value': value})
         if plausibility.get('status') == 'warning' and plausibility.get('message'):
             concerns.append(plausibility['message'])
         new_values = _format_reading(value) + (f' / NT {_format_reading(value_off_peak)}'
@@ -357,6 +346,7 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
 
     # --- Invoice ------------------------------------------------------------
 
+    @report_errors
     async def precheck_invoice(property_id: int, cost_category_id: int, amount: Decimal, start_date: str, end_date: str,
                                invoice_number: str | None, invoice_date: str | None, description: str | None,
                                provider_id: int | None, apartment_id: int | None, invoice_document_id: int | None,
@@ -377,16 +367,16 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         receipt = _read_receipt(receipt_path) if receipt_path else None
         if invoice_document_id is not None and not any(
                 b['id'] == invoice_document_id and b.get('property_id') == property_id
-                for b in await _get('/api/invoice_documents')):
+                for b in await nkf.get('/api/invoice_documents')):
             raise ToolError(f'Sammelbeleg {invoice_document_id} gehört nicht zur Immobilie {property_id} '
                             '(siehe list_invoice_documents).')
         if apartment_id is not None and not any(
-                w['id'] == apartment_id for w in await _get(f'/api/properties/{property_id}/apartments')):
+                w['id'] == apartment_id for w in await nkf.get(f'/api/properties/{property_id}/apartments')):
             raise ToolError(f'Wohnung {apartment_id} gehört nicht zur Immobilie {property_id} (siehe list_apartments).')
 
         new_number = (invoice_number or '').strip()
         concerns = []
-        for r in await _get('/api/invoices'):
+        for r in await nkf.get('/api/invoices'):
             if r['property_id'] != property_id:
                 continue
             number = (r.get('invoice_number') or '').strip()
@@ -417,11 +407,11 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         property_id: PropertyId,
         cost_category_id: Annotated[int, Field(description='ID der Kostenart, siehe Werkzeug list_cost_categories')],
         amount: Amount,
-        start_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Beginn des Leistungszeitraums')],
-        end_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Ende des Leistungszeitraums')],
+        start_date: Annotated[IsoDate, Field(description='Beginn des Leistungszeitraums, YYYY-MM-DD')],
+        end_date: Annotated[IsoDate, Field(description='Ende des Leistungszeitraums, YYYY-MM-DD')],
         decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_invoice)],
         invoice_number: Annotated[str | None, Field(max_length=100)] = None,
-        invoice_date: Annotated[str | None, Field(pattern=r'^\d{4}-\d{2}-\d{2}$')] = None,
+        invoice_date: Annotated[IsoDate | None, Field(description='Datum auf der Rechnung, YYYY-MM-DD')] = None,
         description: Annotated[str | None, Field(max_length=500)] = None,
         provider_id: Annotated[int | None, Field(description='siehe Werkzeug list_providers')] = None,
         apartment_id: Annotated[int | None, Field(
@@ -473,12 +463,13 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
 
     # --- Invoice document -----------------------------------------------------
 
+    @report_errors
     async def precheck_invoice_document(property_id: int, receipt_path: str, description: str | None,
                                         ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
         receipt = _read_receipt(receipt_path)
         stem = _name_core(receipt.filename)
         concerns = [f'Sammelbeleg {b["id"]} „{b.get("filename")}“ gibt es für diese Immobilie schon.'
-                    for b in await _get('/api/invoice_documents')
+                    for b in await nkf.get('/api/invoice_documents')
                     if b.get('property_id') == property_id and _name_core(b.get('filename') or '') == stem]
         return _ask(ctx, f'Neuer Sammelbeleg „{receipt.filename}“ für Immobilie {property_id}.', concerns,
                     ('invoice_document', property_id, receipt_path, description, _fingerprint(receipt)))

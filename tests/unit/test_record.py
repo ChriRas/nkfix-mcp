@@ -524,3 +524,48 @@ async def test_timeout_while_saving_says_the_outcome_is_unclear():
         result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01',
                                                         'payment_type': 'Miete'})
     assert result.is_error and 'unklar' in result.content[0].text
+
+
+@pytest.mark.parametrize(('tool', 'arguments'), [
+    ('record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-13-45', 'payment_type': 'Miete'}),
+    ('record_meter_reading', {'meter_id': 5, 'reading_date': '2025-02-30', 'value': 1}),
+    ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1', 'start_date': '2025-01-01',
+                        'end_date': '2025-02-30'}),
+    ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1', 'start_date': '2025-01-01',
+                        'end_date': '2025-12-31', 'invoice_date': '2026-00-01'}),
+])
+async def test_impossible_date_is_rejected_clearly_and_not_sent(tool, arguments):
+    fake = sample_data()
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
+        result = await mcp.call_tool(tool, arguments)
+    assert result.is_error
+    assert 'kein gültiges Datum' in result.content[0].text
+    assert not fake.requests
+
+
+@pytest.mark.parametrize(('path', 'tool', 'arguments'), [
+    ('/api/payments', 'record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-12-01',
+                                         'payment_type': 'Miete'}),
+    ('/api/readings/check_plausibility', 'record_meter_reading', {'meter_id': 5, 'reading_date': '2025-12-31',
+                                                                  'value': 131}),
+    ('/api/invoices', 'record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1',
+                                         'start_date': '2025-01-01', 'end_date': '2025-12-31'}),
+])
+async def test_instance_error_in_the_precheck_reaches_the_model_with_text(path, tool, arguments):
+    method = 'POST' if 'check' in path else 'GET'
+    fake = sample_data().json(method, path, {'error': 'Datenbank gesperrt.'}, status=500)
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
+        result = await mcp.call_tool(tool, arguments)
+    assert result.is_error
+    assert 'Datenbank gesperrt' in result.content[0].text
+
+
+async def test_missing_invoice_document_in_the_precheck_reaches_the_model_with_text(tmp_path):
+    fake = sample_data()
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
+        result = await mcp.call_tool('upload_invoice_document', {'property_id': 1,
+                                                                 'receipt_path': str(tmp_path / 'fehlt.pdf')})
+    assert result.is_error and 'Beleg nicht gefunden' in result.content[0].text

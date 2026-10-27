@@ -15,10 +15,9 @@ from pydantic import BaseModel, Field
 
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.formatting import format_money
-from nkfix_mcp.tools import READ_ONLY, report_errors, tool
+from nkfix_mcp.tools import READ_ONLY, IsoDate, report_errors, tool
 from nkfix_mcp.tools.read import TenantId
 
-IsoDate = Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Datum als YYYY-MM-DD')]
 MeterId = Annotated[int, Field(description='ID des Zählers, siehe Werkzeug list_meters')]
 
 
@@ -62,9 +61,8 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     @report_errors
     async def precheck_statement(
         tenant_id: TenantId,
-        start_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$',
-                                         description='Beginn des Abrechnungszeitraums')],
-        end_date: Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Ende des Abrechnungszeitraums')],
+        start_date: Annotated[IsoDate, Field(description='Beginn des Abrechnungszeitraums, YYYY-MM-DD')],
+        end_date: Annotated[IsoDate, Field(description='Ende des Abrechnungszeitraums, YYYY-MM-DD')],
         cost_category_ids: Annotated[list[int] | None, Field(description=(
             'Kostenarten, die abgerechnet werden sollen. Wirkt nur auf die Prüfung auf Überschneidung mit '
             'bestehenden Abrechnungen; Zähler und Rechnungen werden immer für alle Kostenarten geprüft.'))] = None,

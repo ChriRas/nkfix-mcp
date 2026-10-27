@@ -109,3 +109,16 @@ async def test_end_in_the_future_is_reported_as_checked_until_today():
 async def test_hausgeld_requires_the_shares():
     result = await call(FakeNkf(), 'check_hausgeld', line_items=[])
     assert result.is_error
+
+
+@pytest.mark.parametrize(('tool', 'arguments'), [
+    ('check_meter_reading', {'meter_id': 5, 'reading_date': '2025-02-30', 'value': 1}),
+    ('precheck_statement', {'tenant_id': 1, 'start_date': '2025-01-01', 'end_date': '2025-02-30'}),
+    ('list_deadlines', {'until': '2027-13-01'}),
+])
+async def test_impossible_date_is_rejected_clearly_and_not_sent(tool, arguments):
+    fake = FakeNkf()
+    result = await call(fake, tool, **arguments)
+    assert result.is_error
+    assert 'kein gültiges Datum' in result.content[0].text
+    assert not fake.requests
