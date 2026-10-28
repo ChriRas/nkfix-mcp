@@ -277,7 +277,7 @@ async def test_settled_but_undelivered_statement_stays_visible():
     )
     overview = await read(fake, 'nkfix://overview')
     assert 'Abrechnungen mit offenem Punkt:' in overview
-    line = '- Abrechnung 8: Erika Muster, 01.01.2025 bis 31.12.2025, beglichen, 0.00 € offen, nicht zugestellt'
-    assert line in overview
+    assert '- Abrechnung 8: Erika Muster, 01.01.2025 bis 31.12.2025, beglichen, nicht zugestellt' in overview
+    assert '0.00 €' not in overview
     assert 'Abrechnung 7' not in overview
     assert '1 weitere Abrechnung ist beglichen und zugestellt.' in overview

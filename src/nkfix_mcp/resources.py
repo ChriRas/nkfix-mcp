@@ -84,7 +84,8 @@ def _statement_line(s: Statement) -> str:
     if outstanding is not None and outstanding < 0:
         # Negative: a credit the landlord still pays out (zahlungsstand.py upstream).
         parts.append(f'{format_money(-outstanding)} € an den Mieter auszuzahlen')
-    elif outstanding is not None:
+    elif outstanding:
+        # Zero says nothing the payment status does not already say.
         parts.append(f'{format_money(outstanding)} € offen')
     parts.append(f'zugestellt am {_day(s.delivered_at)}' if s.delivered_at else 'nicht zugestellt')
     return '- ' + ', '.join(parts)
