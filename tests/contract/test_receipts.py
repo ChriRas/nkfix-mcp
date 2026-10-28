@@ -12,8 +12,10 @@ pytestmark = pytest.mark.anyio
 
 YEAR = date.today().year
 # Smallest valid PDF with fantasy content; NebenkostenFix only checks the first bytes.
-PDF = (b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n'
-       b'trailer<</Root 1 0 R>>\n%%EOF\n')
+PDF = (
+    b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n'
+    b'trailer<</Root 1 0 R>>\n%%EOF\n'
+)
 
 
 async def test_invoice_with_receipt_and_invoice_document(instance, tmp_path):
@@ -23,19 +25,39 @@ async def test_invoice_with_receipt_and_invoice_document(instance, tmp_path):
         house = next(i['id'] for i in (await call(mcp, 'list_properties'))['items'] if i['is_example'])
         cost_category = next(k for k in (await call(mcp, 'list_cost_categories'))['items'] if not k['requires_meter'])
 
-        single = await call(mcp, 'record_invoice', property_id=house, cost_category_id=cost_category['id'],
-                            amount='88,10', start_date=f'{YEAR}-01-01', end_date=f'{YEAR}-01-31',
-                            invoice_number='BELEG-1', receipt_path='muell-fantasie.pdf')
+        single = await call(
+            mcp,
+            'record_invoice',
+            property_id=house,
+            cost_category_id=cost_category['id'],
+            amount='88,10',
+            start_date=f'{YEAR}-01-01',
+            end_date=f'{YEAR}-01-31',
+            invoice_number='BELEG-1',
+            receipt_path='muell-fantasie.pdf',
+        )
         assert single['saved'] is True
 
-        document = await call(mcp, 'upload_invoice_document', property_id=house,
-                              receipt_path='stadtwerke-fantasie.pdf', description='Fantasie-Jahresrechnung')
+        document = await call(
+            mcp,
+            'upload_invoice_document',
+            property_id=house,
+            receipt_path='stadtwerke-fantasie.pdf',
+            description='Fantasie-Jahresrechnung',
+        )
         assert document['saved'] is True
         assert document['id']
         for month, amount in (('02', '10.00'), ('03', '11.00')):
-            part = await call(mcp, 'record_invoice', property_id=house, cost_category_id=cost_category['id'],
-                              amount=amount, start_date=f'{YEAR}-{month}-01', end_date=f'{YEAR}-{month}-28',
-                              invoice_document_id=document['id'])
+            part = await call(
+                mcp,
+                'record_invoice',
+                property_id=house,
+                cost_category_id=cost_category['id'],
+                amount=amount,
+                start_date=f'{YEAR}-{month}-01',
+                end_date=f'{YEAR}-{month}-28',
+                invoice_document_id=document['id'],
+            )
             assert part['saved'] is True
 
         invoices = {r['id']: r for r in (await call(mcp, 'list_invoices', property_id=house, year=YEAR))['items']}
@@ -54,7 +76,8 @@ async def test_invoice_with_receipt_and_invoice_document(instance, tmp_path):
 async def test_disguised_receipt_never_leaves_the_computer(instance, tmp_path):
     (tmp_path / 'rechnung.pdf').write_text('<html>kein Beleg</html>')
     async with connected(instance, 'erfassen') as mcp:
-        result = await mcp.call_tool('upload_invoice_document', {'property_id': 1,
-                                                                  'receipt_path': str(tmp_path / 'rechnung.pdf')})
+        result = await mcp.call_tool(
+            'upload_invoice_document', {'property_id': 1, 'receipt_path': str(tmp_path / 'rechnung.pdf')}
+        )
     assert result.is_error
     assert 'kein Beleg' in result.content[0].text

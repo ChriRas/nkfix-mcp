@@ -75,8 +75,9 @@ def _set_up(url: str, data_dir: Path) -> tuple[str | None, str | None]:
         # GET /einrichtung creates the one-time code in the data directory.
         http.get('/einrichtung', headers={'Accept': 'text/html'})
         code = json.loads((data_dir / 'ersteinrichtung_code').read_text())['code']
-        response = http.post('/einrichtung', json={
-            'username': USERNAME, 'password': PASSWORD, 'password2': PASSWORD, 'code': code})
+        response = http.post(
+            '/einrichtung', json={'username': USERNAME, 'password': PASSWORD, 'password2': PASSWORD, 'code': code}
+        )
         assert response.status_code == 201, response.text
         response = http.post('/api/analytics/beispiel-immobilie', json={})
         assert response.status_code == 201, response.text
@@ -110,8 +111,9 @@ def instance(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Instance]:
     for name in ('NKF_URL', 'NKF_API_KEY', 'NKF_USERNAME', 'NKF_PASSWORD'):
         env.pop(name, None)
     with log.open('w') as output:
-        process = subprocess.Popen([python, 'app.py'], cwd=source_path, env=env,
-                                   stdout=output, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(
+            [python, 'app.py'], cwd=source_path, env=env, stdout=output, stderr=subprocess.STDOUT
+        )
     try:
         _wait_until_ready(url, process, log)
         read, record = _set_up(url, data_dir)

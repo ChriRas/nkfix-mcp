@@ -41,6 +41,9 @@ markers = [
 target-version = "py311"
 line-length = 120
 
+[tool.ruff.format]
+quote-style = "single"
+
 [tool.ruff.lint]
 select = [
     "E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "ANN", "D", "PT", "S", "ERA", "C4", "PTH", "TRY", "RET",

@@ -54,8 +54,9 @@ async def test_start_via_stdio_as_in_claude(instance):
 
 async def test_start_without_url_exits_with_message_on_stderr():
     command = Path(sys.executable).with_name('nkfix-mcp')
-    run = subprocess.run([str(command)], env={'PATH': os.environ['PATH']}, capture_output=True, text=True,
-                         timeout=30, check=False)
+    run = subprocess.run(
+        [str(command)], env={'PATH': os.environ['PATH']}, capture_output=True, text=True, timeout=30, check=False
+    )
     assert run.returncode == 2
     assert 'NKF_URL fehlt' in run.stderr
     assert run.stdout == ''

@@ -29,20 +29,26 @@ async def test_checks_work_with_read_key_and_change_nothing(instance):
         assert any(p['category'] == 'Zeitraum' and p['blocking'] for p in precheck['checks'])
         assert all(p['status'] for p in precheck['checks'])
 
-        meter = next(z for z in (await call(mcp, 'list_meters', property_id=house))['items']
-                     if z['readings'])
+        meter = next(z for z in (await call(mcp, 'list_meters', property_id=house))['items'] if z['readings'])
         last = meter['readings'][0]
         # Only a reading within 30 days is compared against: one day later.
         next_day = (date.fromisoformat(last['reading_date']) + timedelta(days=1)).isoformat()
-        implausible = await call(mcp, 'check_meter_reading', meter_id=meter['id'], reading_date=next_day,
-                                 value=(last['value'] or 0) / 1000)
+        implausible = await call(
+            mcp, 'check_meter_reading', meter_id=meter['id'], reading_date=next_day, value=(last['value'] or 0) / 1000
+        )
         assert (implausible['status'], implausible['checked']) == ('warning', True)
         assert implausible['reference_date']
 
-        hausgeld = await call(mcp, 'check_hausgeld', line_items=[
-            {'name': 'Hausmeister', 'total_amount': '2400.00', 'own_amount': '300.00'},
-            {'name': 'Instandhaltungsrücklage', 'total_amount': '8000.00', 'own_amount': '1000.00'}],
-            own_shares=125, total_shares=1000)
+        hausgeld = await call(
+            mcp,
+            'check_hausgeld',
+            line_items=[
+                {'name': 'Hausmeister', 'total_amount': '2400.00', 'own_amount': '300.00'},
+                {'name': 'Instandhaltungsrücklage', 'total_amount': '8000.00', 'own_amount': '1000.00'},
+            ],
+            own_shares=125,
+            total_shares=1000,
+        )
         assert hausgeld['line_items'][0]['umlagefaehig'] is True
         assert hausgeld['line_items'][1]['umlagefaehig'] is False
         assert hausgeld['notes']

@@ -20,13 +20,34 @@ pytestmark = pytest.mark.anyio
 
 RECORD_TOOLS = {'record_payment', 'record_meter_reading', 'record_invoice', 'upload_invoice_document'}
 
-PAYMENT = {'id': 1, 'tenant_id': 1, 'tenant_name': 'Erika Muster', 'amount': 650.0,
-           'payment_date': '2025-11-03', 'type': 'Miete'}
-READING = {'id': 100, 'meter_id': 5, 'reading_date': '2025-09-30', 'value': 120.0, 'value_nt': None,
-           'ablesungsart': 'ablesung', 'plausibility_status': 'ok'}
-INVOICE = {'id': 7, 'property_id': 1, 'category_id': 3, 'amount': 412.5, 'start_date': '2025-01-01',
-           'end_date': '2025-12-31', 'invoice_number': 'WA-2025-17', 'property_name': 'Musterhaus',
-           'category_name': 'Wasser'}
+PAYMENT = {
+    'id': 1,
+    'tenant_id': 1,
+    'tenant_name': 'Erika Muster',
+    'amount': 650.0,
+    'payment_date': '2025-11-03',
+    'type': 'Miete',
+}
+READING = {
+    'id': 100,
+    'meter_id': 5,
+    'reading_date': '2025-09-30',
+    'value': 120.0,
+    'value_nt': None,
+    'ablesungsart': 'ablesung',
+    'plausibility_status': 'ok',
+}
+INVOICE = {
+    'id': 7,
+    'property_id': 1,
+    'category_id': 3,
+    'amount': 412.5,
+    'start_date': '2025-01-01',
+    'end_date': '2025-12-31',
+    'invoice_number': 'WA-2025-17',
+    'property_name': 'Musterhaus',
+    'category_name': 'Wasser',
+}
 
 
 def sample_data() -> FakeNkf:
@@ -96,30 +117,41 @@ async def test_prompt_on_every_call_can_be_turned_off():
 
 # --- Payment -----------------------------------------------------------------
 
+
 async def test_payment_is_created():
     fake = sample_data()
-    data = await call(fake, 'record_payment', tenant_id=1, amount='60', payment_date='2025-11-03',
-                      payment_type='Nebenkostenvorauszahlung')
+    data = await call(
+        fake,
+        'record_payment',
+        tenant_id=1,
+        amount='60',
+        payment_date='2025-11-03',
+        payment_type='Nebenkostenvorauszahlung',
+    )
     assert data['saved'] is True
     assert data['id'] == 42
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0]) == {
-        'tenant_id': 1, 'amount': '60.00', 'type': 'Nebenkostenvorauszahlung', 'payment_date': '2025-11-03'}
+        'tenant_id': 1,
+        'amount': '60.00',
+        'type': 'Nebenkostenvorauszahlung',
+        'payment_date': '2025-11-03',
+    }
 
 
 async def test_unknown_payment_type_is_rejected_by_schema():
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-11-03',
-                                                        'payment_type': 'Trinkgeld'})
+        result = await mcp.call_tool(
+            'record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-11-03', 'payment_type': 'Trinkgeld'}
+        )
     assert result.is_error
     assert fake.sent('POST', '/api/payments') == []
 
 
 async def test_duplicate_payment_without_elicitation_is_not_saved_but_asks_for_confirmation():
     fake = sample_data()
-    data = await call(fake, 'record_payment', tenant_id=1, amount=650, payment_date='2025-11-03',
-                      payment_type='Miete')
+    data = await call(fake, 'record_payment', tenant_id=1, amount=650, payment_date='2025-11-03', payment_type='Miete')
     assert data['saved'] is False
     assert data['id'] is None
     assert any('gibt es schon' in b for b in data['concerns'])
@@ -180,14 +212,19 @@ async def test_approval_code_ignores_case_and_whitespace():
 async def test_approval_code_of_one_tool_does_not_apply_to_another():
     fake = sample_data().json('GET', '/api/readings', [{**READING, 'value': 900.0}])
     code = (await call(fake, 'record_payment', **DUPLICATE))['approval_code']
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=1,
-                      approval_code=code)
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=1, approval_code=code)
     assert data['saved'] is False
     assert 'passt nicht' in data['note']
 
 
-SAME_NUMBER = {'property_id': 1, 'cost_category_id': 9, 'amount': '100', 'start_date': '2025-01-01',
-               'end_date': '2025-06-30', 'invoice_number': 'WA-2025-17'}
+SAME_NUMBER = {
+    'property_id': 1,
+    'cost_category_id': 9,
+    'amount': '100',
+    'start_date': '2025-01-01',
+    'end_date': '2025-06-30',
+    'invoice_number': 'WA-2025-17',
+}
 
 
 async def test_invoice_with_approval_code_is_saved():
@@ -200,13 +237,15 @@ async def test_invoice_with_approval_code_is_saved():
     assert FakeNkf.body(fake.sent('POST', '/api/invoices')[0])['grundpreis'] == '12.00'
 
 
-@pytest.mark.parametrize('changed', [{'amount': '200'}, {'base_price': '13'}, {'description': 'anders'},
-                                     {'provider_id': 4}])
+@pytest.mark.parametrize(
+    'changed', [{'amount': '200'}, {'base_price': '13'}, {'description': 'anders'}, {'provider_id': 4}]
+)
 async def test_approval_code_does_not_apply_to_changed_values_with_the_same_concerns(changed):
     fake = sample_data()
     first = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12')
-    data = await call(fake, 'record_invoice', **{**SAME_NUMBER, 'base_price': '12', **changed},
-                      approval_code=first['approval_code'])
+    data = await call(
+        fake, 'record_invoice', **{**SAME_NUMBER, 'base_price': '12', **changed}, approval_code=first['approval_code']
+    )
     assert data['concerns'] == first['concerns']
     assert data['saved'] is False
     assert 'passt nicht' in data['note']
@@ -221,8 +260,16 @@ PROTOCOLS = pytest.mark.parametrize('mode', ['auto', 'legacy'])
 async def test_duplicate_payment_asks_the_human_if_the_client_can(mode):
     fake = sample_data()
     callback = answer_with('accept')
-    data = await call(fake, 'record_payment', callback, mode=mode, tenant_id=1, amount=650,
-                      payment_date='2025-11-03', payment_type='Miete')
+    data = await call(
+        fake,
+        'record_payment',
+        callback,
+        mode=mode,
+        tenant_id=1,
+        amount=650,
+        payment_date='2025-11-03',
+        payment_type='Miete',
+    )
     assert data['saved'] is True
     assert 'gibt es schon' in callback.questions[0]
 
@@ -231,8 +278,17 @@ async def test_duplicate_payment_asks_the_human_if_the_client_can(mode):
 @pytest.mark.parametrize(('action', 'save'), [('accept', False), ('decline', True), ('cancel', True)])
 async def test_human_refusal_stands_even_if_the_model_sends_a_code(action, save, mode):
     fake = sample_data()
-    data = await call(fake, 'record_payment', answer_with(action, save), mode=mode, tenant_id=1, amount=650,
-                      payment_date='2025-11-03', payment_type='Miete', approval_code='00000000')
+    data = await call(
+        fake,
+        'record_payment',
+        answer_with(action, save),
+        mode=mode,
+        tenant_id=1,
+        amount=650,
+        payment_date='2025-11-03',
+        payment_type='Miete',
+        approval_code='00000000',
+    )
     assert data['saved'] is False
     assert 'abgelehnt' in data['note']
     assert fake.sent('POST', '/api/payments') == []
@@ -240,8 +296,15 @@ async def test_human_refusal_stands_even_if_the_model_sends_a_code(action, save,
 
 async def test_without_concerns_nobody_is_asked():
     callback = answer_with('decline')
-    data = await call(sample_data(), 'record_payment', callback, tenant_id=1, amount=650, payment_date='2025-12-03',
-                      payment_type='Miete')
+    data = await call(
+        sample_data(),
+        'record_payment',
+        callback,
+        tenant_id=1,
+        amount=650,
+        payment_date='2025-12-03',
+        payment_type='Miete',
+    )
     assert data['saved'] is True
     assert callback.questions == []
 
@@ -251,8 +314,9 @@ async def test_read_key_gets_clear_message_when_recording():
     fake = sample_data().json('POST', '/api/payments', {'error': 'x', 'code': 'schluessel_umfang'}, status=403)
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, None)) as mcp:
-        result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01',
-                                                        'payment_type': 'Miete'})
+        result = await mcp.call_tool(
+            'record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01', 'payment_type': 'Miete'}
+        )
     assert result.is_error
     assert 'Lesen und erfassen' in result.content[0].text
 
@@ -261,10 +325,21 @@ async def test_read_key_gets_clear_message_when_recording():
 # NebenkostenFix counts a settlement payment against a statement only if it
 # carries billing_report_id; without it the statement stays "offen".
 
-STATEMENT = {'id': 3, 'tenant_id': 1, 'tenant_name': 'Erika Muster', 'apartment_name': 'EG', 'property_id': 1,
-             'property_name': 'Musterhaus', 'start_date': '2025-01-01', 'end_date': '2025-12-31',
-             'created_at': '27.10.2026', 'veraltet': False, 'zugestellt_am': None, 'offen_betrag': '108.32',
-             'zahlungsstand': 'offen'}
+STATEMENT = {
+    'id': 3,
+    'tenant_id': 1,
+    'tenant_name': 'Erika Muster',
+    'apartment_name': 'EG',
+    'property_id': 1,
+    'property_name': 'Musterhaus',
+    'start_date': '2025-01-01',
+    'end_date': '2025-12-31',
+    'created_at': '27.10.2026',
+    'veraltet': False,
+    'zugestellt_am': None,
+    'offen_betrag': '108.32',
+    'zahlungsstand': 'offen',
+}
 OTHER_TENANTS_STATEMENT = {**STATEMENT, 'id': 4, 'tenant_id': 2, 'tenant_name': 'Max Muster'}
 SETTLEMENT = {'tenant_id': 1, 'amount': '108.32', 'payment_date': '2026-10-19', 'payment_type': 'Nebenkostenzahlung'}
 
@@ -279,8 +354,12 @@ async def test_settlement_payment_is_linked_to_its_statement():
     assert data['saved'] is True
     assert data['concerns'] == []
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0]) == {
-        'tenant_id': 1, 'amount': '108.32', 'type': 'Nebenkostenzahlung', 'payment_date': '2026-10-19',
-        'billing_report_id': 3}
+        'tenant_id': 1,
+        'amount': '108.32',
+        'type': 'Nebenkostenzahlung',
+        'payment_date': '2026-10-19',
+        'billing_report_id': 3,
+    }
 
 
 @pytest.mark.parametrize('payment_type', ['Miete', 'Nebenkostenvorauszahlung', 'Kaution'])
@@ -289,8 +368,7 @@ async def test_statement_id_with_other_payment_type_is_rejected(payment_type):
     fake = with_statements(STATEMENT)
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_payment', {**SETTLEMENT, 'payment_type': payment_type,
-                                                        'statement_id': 3})
+        result = await mcp.call_tool('record_payment', {**SETTLEMENT, 'payment_type': payment_type, 'statement_id': 3})
     assert result.is_error
     assert 'nur bei Nebenkostenzahlung' in result.content[0].text
     assert fake.sent('POST', '/api/payments') == []
@@ -331,8 +409,7 @@ async def test_amount_other_than_outstanding_raises_a_concern(amount, difference
     fake = with_statements(STATEMENT)
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': amount}, statement_id=3)
     assert data['saved'] is False
-    assert data['concerns'] == [f'In Abrechnung 3 sind 108.32 € offen, die Zahlung ist {amount} € '
-                                f'({difference}).']
+    assert data['concerns'] == [f'In Abrechnung 3 sind 108.32 € offen, die Zahlung ist {amount} € ({difference}).']
 
 
 async def test_settled_statement_raises_a_double_payment_concern():
@@ -354,22 +431,27 @@ async def test_credit_payout_of_the_outstanding_credit_raises_no_concern():
 async def test_credit_payout_with_wrong_sign_says_payouts_are_negative():
     fake = with_statements(CREDIT)
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '42.10'}, statement_id=3)
-    assert data['concerns'] == ['In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Zahlung ist aber positiv '
-                                '(42.10 €). Eine Auszahlung wird negativ erfasst (-42.10).']
+    assert data['concerns'] == [
+        'In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Zahlung ist aber positiv '
+        '(42.10 €). Eine Auszahlung wird negativ erfasst (-42.10).'
+    ]
 
 
 async def test_negative_payment_on_an_outstanding_amount_says_only_payouts_are_negative():
     fake = with_statements(STATEMENT)
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-108.32'}, statement_id=3)
-    assert data['concerns'] == ['In Abrechnung 3 sind 108.32 € offen, die Zahlung ist aber negativ (-108.32 €). '
-                                'Negativ wird nur ein ausgezahltes Guthaben erfasst.']
+    assert data['concerns'] == [
+        'In Abrechnung 3 sind 108.32 € offen, die Zahlung ist aber negativ (-108.32 €). '
+        'Negativ wird nur ein ausgezahltes Guthaben erfasst.'
+    ]
 
 
 async def test_credit_payout_of_another_amount_names_the_difference():
     fake = with_statements(CREDIT)
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-50.00'}, statement_id=3)
-    assert data['concerns'] == ['In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Auszahlung ist 50.00 € '
-                                '(7.90 € mehr).']
+    assert data['concerns'] == [
+        'In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Auszahlung ist 50.00 € (7.90 € mehr).'
+    ]
 
 
 async def test_unlinked_concern_names_a_credit_as_credit():
@@ -390,11 +472,15 @@ async def test_approval_code_is_bound_to_the_statement():
     # The only concern is the duplicate, worded the same for both statements:
     # only statement_id itself tells the two calls apart.
     fake = with_statements(STATEMENT, {**STATEMENT, 'id': 5, 'start_date': '2024-07-01', 'end_date': '2024-12-31'})
-    fake.json('GET', '/api/payments', [{**PAYMENT, 'amount': 108.32, 'payment_date': '2026-10-19',
-                                        'type': 'Nebenkostenzahlung'}])
+    fake.json(
+        'GET',
+        '/api/payments',
+        [{**PAYMENT, 'amount': 108.32, 'payment_date': '2026-10-19', 'type': 'Nebenkostenzahlung'}],
+    )
     first = await call(fake, 'record_payment', **SETTLEMENT, statement_id=3)
-    assert first['concerns'] == ['Eine Zahlung über 108.32 € (Nebenkostenzahlung) vom 19.10.2026 gibt es schon für '
-                                 'diesen Mieter (Zahlung 1).']
+    assert first['concerns'] == [
+        'Eine Zahlung über 108.32 € (Nebenkostenzahlung) vom 19.10.2026 gibt es schon für diesen Mieter (Zahlung 1).'
+    ]
     data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=5, approval_code=first['approval_code'])
     assert data['saved'] is False
     assert 'passt nicht' in data['note']
@@ -424,18 +510,26 @@ async def test_payment_type_help_points_to_statement_id():
 
 # --- Meter reading -----------------------------------------------------------
 
+
 async def test_unremarkable_meter_reading_is_saved_without_trotzdem():
     fake = sample_data()
     data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5)
     assert data == {'saved': True, 'id': 43, 'concerns': [], 'note': 'Gespeichert.', 'approval_code': None}
     assert FakeNkf.body(fake.sent('POST', '/api/readings')[0]) == {
-        'meter_id': 5, 'reading_date': '2025-12-31', 'value': 131.5, 'ablesungsart': 'ablesung'}
+        'meter_id': 5,
+        'reading_date': '2025-12-31',
+        'value': 131.5,
+        'ablesungsart': 'ablesung',
+    }
 
 
-@pytest.mark.parametrize(('value', 'reading_date', 'concerns'), [
-    (110.0, '2025-12-31', 'kleiner als der vorige'),
-    (130.0, '2025-09-30', 'schon einen Stand (Stand 100)'),
-])
+@pytest.mark.parametrize(
+    ('value', 'reading_date', 'concerns'),
+    [
+        (110.0, '2025-12-31', 'kleiner als der vorige'),
+        (130.0, '2025-09-30', 'schon einen Stand (Stand 100)'),
+    ],
+)
 async def test_backwards_or_duplicate_reading_asks_for_confirmation_first(value, reading_date, concerns):
     fake = sample_data()
     data = await call(fake, 'record_meter_reading', meter_id=5, reading_date=reading_date, value=value)
@@ -445,9 +539,11 @@ async def test_backwards_or_duplicate_reading_asks_for_confirmation_first(value,
 
 
 async def test_plausibility_warning_asks_for_confirmation_and_once_confirmed_is_sent_with_trotzdem():
-    fake = sample_data().json('POST', '/api/readings/check_plausibility',
-                              {'status': 'warning', 'message': 'Achtung! Abweichung 900 %.',
-                               'closest_date': '2025-09-30'})
+    fake = sample_data().json(
+        'POST',
+        '/api/readings/check_plausibility',
+        {'status': 'warning', 'message': 'Achtung! Abweichung 900 %.', 'closest_date': '2025-09-30'},
+    )
     callback = answer_with('accept')
     data = await call(fake, 'record_meter_reading', callback, meter_id=5, reading_date='2025-10-10', value=1200)
     assert data['saved'] is True
@@ -458,8 +554,14 @@ async def test_plausibility_warning_asks_for_confirmation_and_once_confirmed_is_
 async def test_meter_reading_with_approval_code_is_sent_with_trotzdem():
     fake = sample_data()
     first = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110)
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110,
-                      approval_code=first['approval_code'])
+    data = await call(
+        fake,
+        'record_meter_reading',
+        meter_id=5,
+        reading_date='2025-12-31',
+        value=110,
+        approval_code=first['approval_code'],
+    )
     assert data['saved'] is True
     assert FakeNkf.body(fake.sent('POST', '/api/readings')[0])['trotzdem'] is True
 
@@ -467,46 +569,75 @@ async def test_meter_reading_with_approval_code_is_sent_with_trotzdem():
 async def test_approval_code_does_not_apply_when_the_reading_type_changes():
     fake = sample_data()
     first = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110)
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=110,
-                      interim_reading=True, approval_code=first['approval_code'])
+    data = await call(
+        fake,
+        'record_meter_reading',
+        meter_id=5,
+        reading_date='2025-12-31',
+        value=110,
+        interim_reading=True,
+        approval_code=first['approval_code'],
+    )
     assert data['saved'] is False
 
 
 async def test_confirmation_request_from_instance_despite_precheck_is_passed_on():
-    fake = sample_data().json('POST', '/api/readings', {'error': 'Der NT-Stand ist kleiner.', 'nachfrage': True},
-                              status=409)
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5,
-                      value_off_peak=1)
+    fake = sample_data().json(
+        'POST', '/api/readings', {'error': 'Der NT-Stand ist kleiner.', 'nachfrage': True}, status=409
+    )
+    data = await call(
+        fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5, value_off_peak=1
+    )
     assert data['saved'] is False
     assert data['concerns'] == ['Der NT-Stand ist kleiner.']
 
 
 async def test_interim_reading_on_tenant_change():
     fake = sample_data()
-    await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5,
-               interim_reading=True)
+    await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5, interim_reading=True)
     assert FakeNkf.body(fake.sent('POST', '/api/readings')[0])['ablesungsart'] == 'zwischenablesung'
 
 
 # --- Invoice -----------------------------------------------------------------
 
+
 async def test_invoice_is_created_with_the_api_fields():
     fake = sample_data()
-    data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='98.7',
-                      start_date='2025-01-01', end_date='2025-12-31', invoice_number='MUELL-25',
-                      invoice_date='2026-01-05', description='Müllabfuhr', provider_id=4)
+    data = await call(
+        fake,
+        'record_invoice',
+        property_id=1,
+        cost_category_id=3,
+        amount='98.7',
+        start_date='2025-01-01',
+        end_date='2025-12-31',
+        invoice_number='MUELL-25',
+        invoice_date='2026-01-05',
+        description='Müllabfuhr',
+        provider_id=4,
+    )
     assert data['saved'] is True
     assert data['id'] == 44
     assert FakeNkf.body(fake.sent('POST', '/api/invoices')[0]) == {
-        'property_id': 1, 'category_id': 3, 'amount': '98.70', 'start_date': '2025-01-01', 'end_date': '2025-12-31',
-        'invoice_number': 'MUELL-25', 'rechnungsdatum': '2026-01-05', 'description': 'Müllabfuhr',
-        'provider_id': 4}
+        'property_id': 1,
+        'category_id': 3,
+        'amount': '98.70',
+        'start_date': '2025-01-01',
+        'end_date': '2025-12-31',
+        'invoice_number': 'MUELL-25',
+        'rechnungsdatum': '2026-01-05',
+        'description': 'Müllabfuhr',
+        'provider_id': 4,
+    }
 
 
-@pytest.mark.parametrize('arguments', [
-    {'invoice_number': 'WA-2025-17', 'amount': '1', 'start_date': '2025-03-01', 'end_date': '2025-03-31'},
-    {'amount': '412.50', 'start_date': '2025-01-01', 'end_date': '2025-12-31'},
-])
+@pytest.mark.parametrize(
+    'arguments',
+    [
+        {'invoice_number': 'WA-2025-17', 'amount': '1', 'start_date': '2025-03-01', 'end_date': '2025-03-31'},
+        {'amount': '412.50', 'start_date': '2025-01-01', 'end_date': '2025-12-31'},
+    ],
+)
 async def test_existing_invoice_asks_for_confirmation(arguments):
     fake = sample_data()
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, **arguments)
@@ -517,8 +648,18 @@ async def test_existing_invoice_asks_for_confirmation(arguments):
 
 async def test_heating_invoice_includes_heating_system_and_items():
     fake = sample_data()
-    await call(fake, 'record_invoice', property_id=1, cost_category_id=5, amount='1500', start_date='2025-01-01',
-               end_date='2025-12-31', heating_system_id=2, heating_cost_type='brennstoff', co2_cost='120.5')
+    await call(
+        fake,
+        'record_invoice',
+        property_id=1,
+        cost_category_id=5,
+        amount='1500',
+        start_date='2025-01-01',
+        end_date='2025-12-31',
+        heating_system_id=2,
+        heating_cost_type='brennstoff',
+        co2_cost='120.5',
+    )
     body = FakeNkf.body(fake.sent('POST', '/api/invoices')[0])
     assert (body['heizungsanlage_id'], body['heizkostenart'], body['co2_kosten']) == (2, 'brennstoff', '120.50')
     assert 'rechnungsdatum_fuer_beleg' not in body
@@ -528,14 +669,27 @@ async def test_end_date_before_start_date_is_rejected_before_sending():
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '5',
-                                                        'start_date': '2025-12-31', 'end_date': '2025-01-01'})
+        result = await mcp.call_tool(
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '5',
+                'start_date': '2025-12-31',
+                'end_date': '2025-01-01',
+            },
+        )
     assert result.is_error
     assert fake.sent('POST', '/api/invoices') == []
 
 
-ALLOWED_RECORD_ENDPOINTS = [*ALLOWED_READ_ENDPOINTS, r'POST /api/invoices', r'POST /api/invoice_documents',
-                            r'POST /api/readings', r'POST /api/payments']
+ALLOWED_RECORD_ENDPOINTS = [
+    *ALLOWED_READ_ENDPOINTS,
+    r'POST /api/invoices',
+    r'POST /api/invoice_documents',
+    r'POST /api/readings',
+    r'POST /api/payments',
+]
 
 
 async def test_record_guard_calls_only_allowed_endpoints(tmp_path):
@@ -545,12 +699,29 @@ async def test_record_guard_calls_only_allowed_endpoints(tmp_path):
     fake.json('POST', '/api/invoice_documents', {'id': 9, 'filename': 'b.pdf'}, status=201)
     for tool, arguments in [
         ('upload_invoice_document', {'property_id': 1, 'receipt_path': str(tmp_path / 'b.pdf')}),
-        ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '7', 'start_date': '2025-02-01',
-                            'end_date': '2025-02-28', 'receipt_path': str(tmp_path / 'b.pdf')}),
+        (
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '7',
+                'start_date': '2025-02-01',
+                'end_date': '2025-02-28',
+                'receipt_path': str(tmp_path / 'b.pdf'),
+            },
+        ),
         ('record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-12-01', 'payment_type': 'Miete'}),
         ('record_meter_reading', {'meter_id': 5, 'reading_date': '2025-12-31', 'value': 200}),
-        ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '5', 'start_date': '2025-01-01',
-                            'end_date': '2025-01-31'}),
+        (
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '5',
+                'start_date': '2025-01-01',
+                'end_date': '2025-01-31',
+            },
+        ),
     ]:
         await call(fake, tool, **arguments)
     for request in fake.requests:
@@ -572,15 +743,29 @@ async def test_money_with_decimal_comma_is_understood():
 async def test_invoice_response_without_id_does_not_crash():
     # Response 201 without id (e.g. an older instance): no crash.
     fake = sample_data().set_route('POST', '/api/invoices', json_response(201, {}))
-    data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='5', start_date='2025-02-01',
-                      end_date='2025-02-28')
+    data = await call(
+        fake,
+        'record_invoice',
+        property_id=1,
+        cost_category_id=3,
+        amount='5',
+        start_date='2025-02-01',
+        end_date='2025-02-28',
+    )
     assert data['saved'] is True
     assert data['id'] is None
 
 
-@pytest.mark.parametrize(('raw', 'expected'), [
-    ('1500', '1500.00'), ('1.500,00', '1500.00'), ('1500,5', '1500.50'), (98.7, '98.70'), ('12 €', '12.00'),
-])
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('1500', '1500.00'),
+        ('1.500,00', '1500.00'),
+        ('1500,5', '1500.50'),
+        (98.7, '98.70'),
+        ('12 €', '12.00'),
+    ],
+)
 async def test_unambiguous_amounts(raw, expected):
     fake = sample_data()
     await call(fake, 'record_payment', tenant_id=1, amount=raw, payment_date='2025-12-01', payment_type='Kaution')
@@ -592,8 +777,9 @@ async def test_ambiguous_or_invalid_amounts_are_rejected(raw):
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': raw, 'payment_date': '2025-12-01',
-                                                        'payment_type': 'Kaution'})
+        result = await mcp.call_tool(
+            'record_payment', {'tenant_id': 1, 'amount': raw, 'payment_date': '2025-12-01', 'payment_type': 'Kaution'}
+        )
     assert result.is_error
     assert fake.sent('POST', '/api/payments') == []
 
@@ -606,15 +792,15 @@ async def test_large_readings_are_stated_exactly():
 
 async def test_backwards_off_peak_reading_asks_for_confirmation():
     fake = sample_data().json('GET', '/api/readings', [{**READING, 'value_nt': 50.0}])
-    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=130,
-                      value_off_peak=40)
+    data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=130, value_off_peak=40)
     assert data['saved'] is False
     assert any(b.startswith('Der NT-Stand 40') for b in data['concerns'])
 
 
 async def test_unexpected_confirmation_request_from_instance_does_not_loop():
-    fake = sample_data().json('POST', '/api/readings', {'error': 'Unbekannte Rückfrage.', 'nachfrage': True},
-                              status=409)
+    fake = sample_data().json(
+        'POST', '/api/readings', {'error': 'Unbekannte Rückfrage.', 'nachfrage': True}, status=409
+    )
     data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5)
     assert data['saved'] is False
     assert 'selbst eintragen' in data['note']
@@ -626,13 +812,30 @@ async def test_labor_cost_requires_section_35a_category():
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_invoice', {
-            'property_id': 1, 'cost_category_id': 3, 'amount': '300', 'start_date': '2025-01-01',
-            'end_date': '2025-12-31', 'labor_cost': '120'})
+        result = await mcp.call_tool(
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '300',
+                'start_date': '2025-01-01',
+                'end_date': '2025-12-31',
+                'labor_cost': '120',
+            },
+        )
     assert result.is_error
     assert '35a' in result.content[0].text
-    data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='300', start_date='2025-01-01',
-                      end_date='2025-12-31', labor_cost='120', section_35a_category='haushaltsnah')
+    data = await call(
+        fake,
+        'record_invoice',
+        property_id=1,
+        cost_category_id=3,
+        amount='300',
+        start_date='2025-01-01',
+        end_date='2025-12-31',
+        labor_cost='120',
+        section_35a_category='haushaltsnah',
+    )
     body = FakeNkf.body(fake.sent('POST', '/api/invoices')[0])
     assert data['saved']
     assert (body['art_35a'], body['lohnanteil']) == ('haushaltsnah', '120.00')
@@ -642,8 +845,17 @@ async def test_same_invoice_for_another_apartment_is_not_a_duplicate():
     fake = sample_data()
     fake.json('GET', '/api/properties/1/apartments', [{'id': 10, 'name': 'EG'}, {'id': 11, 'name': 'OG'}])
     fake.json('GET', '/api/invoices', [{**INVOICE, 'invoice_number': None, 'apartment_id': 10}])
-    data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='412.50',
-                      start_date='2025-01-01', end_date='2025-12-31', apartment_id=11, invoice_number='   ')
+    data = await call(
+        fake,
+        'record_invoice',
+        property_id=1,
+        cost_category_id=3,
+        amount='412.50',
+        start_date='2025-01-01',
+        end_date='2025-12-31',
+        apartment_id=11,
+        invoice_number='   ',
+    )
     assert data['saved'] is True
     assert 'invoice_number' not in FakeNkf.body(fake.sent('POST', '/api/invoices')[0])
 
@@ -653,34 +865,61 @@ async def test_errors_come_before_asking_the_human():
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen'), elicitation_callback=callback) as mcp:
-        result = await mcp.call_tool('record_invoice', {
-            'property_id': 1, 'cost_category_id': 3, 'amount': '412.50', 'start_date': '2025-12-31',
-            'end_date': '2025-01-01'})
+        result = await mcp.call_tool(
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '412.50',
+                'start_date': '2025-12-31',
+                'end_date': '2025-01-01',
+            },
+        )
     assert result.is_error
     assert callback.questions == []
 
 
-@pytest.mark.parametrize(('field', 'value', 'message'), [
-    ('invoice_document_id', 4, 'Sammelbeleg 4 gehört nicht'),
-    ('apartment_id', 20, 'Wohnung 20 gehört nicht'),
-])
+@pytest.mark.parametrize(
+    ('field', 'value', 'message'),
+    [
+        ('invoice_document_id', 4, 'Sammelbeleg 4 gehört nicht'),
+        ('apartment_id', 20, 'Wohnung 20 gehört nicht'),
+    ],
+)
 async def test_invoice_document_and_apartment_must_belong_to_the_property(field, value, message):
     fake = sample_data()
     fake.json('GET', '/api/invoice_documents', [{'id': 4, 'property_id': 2, 'filename': 'x.pdf'}])
     fake.json('GET', '/api/properties/1/apartments', [{'id': 10, 'name': 'EG'}])
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_invoice', {
-            'property_id': 1, 'cost_category_id': 3, 'amount': '5', 'start_date': '2025-01-01',
-            'end_date': '2025-01-31', field: value})
+        result = await mcp.call_tool(
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '5',
+                'start_date': '2025-01-01',
+                'end_date': '2025-01-31',
+                field: value,
+            },
+        )
     assert result.is_error
     assert message in result.content[0].text
 
 
 async def test_the_question_lists_the_new_values():
     callback = answer_with('decline')
-    await call(sample_data(), 'record_invoice', callback, property_id=1, cost_category_id=3, amount='1',
-               start_date='2025-03-01', end_date='2025-03-31', invoice_number='WA-2025-17')
+    await call(
+        sample_data(),
+        'record_invoice',
+        callback,
+        property_id=1,
+        cost_category_id=3,
+        amount='1',
+        start_date='2025-03-01',
+        end_date='2025-03-31',
+        invoice_number='WA-2025-17',
+    )
     assert 'Neue Rechnung: Kostenart 3, 1.00 €, 2025-03-01 bis 2025-03-31, Nr. WA-2025-17' in callback.questions[0]
     assert 'Rechnung 7' in callback.questions[0]
 
@@ -694,20 +933,41 @@ async def test_timeout_while_saving_says_the_outcome_is_unclear():
     fake = sample_data().set_route('POST', '/api/payments', slow)
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01',
-                                                        'payment_type': 'Miete'})
+        result = await mcp.call_tool(
+            'record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01', 'payment_type': 'Miete'}
+        )
     assert result.is_error
     assert 'unklar' in result.content[0].text
 
 
-@pytest.mark.parametrize(('tool', 'arguments'), [
-    ('record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-13-45', 'payment_type': 'Miete'}),
-    ('record_meter_reading', {'meter_id': 5, 'reading_date': '2025-02-30', 'value': 1}),
-    ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1', 'start_date': '2025-01-01',
-                        'end_date': '2025-02-30'}),
-    ('record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1', 'start_date': '2025-01-01',
-                        'end_date': '2025-12-31', 'invoice_date': '2026-00-01'}),
-])
+@pytest.mark.parametrize(
+    ('tool', 'arguments'),
+    [
+        ('record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-13-45', 'payment_type': 'Miete'}),
+        ('record_meter_reading', {'meter_id': 5, 'reading_date': '2025-02-30', 'value': 1}),
+        (
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '1',
+                'start_date': '2025-01-01',
+                'end_date': '2025-02-30',
+            },
+        ),
+        (
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '1',
+                'start_date': '2025-01-01',
+                'end_date': '2025-12-31',
+                'invoice_date': '2026-00-01',
+            },
+        ),
+    ],
+)
 async def test_impossible_date_is_rejected_clearly_and_not_sent(tool, arguments):
     fake = sample_data()
     nkf = client(fake)
@@ -718,14 +978,32 @@ async def test_impossible_date_is_rejected_clearly_and_not_sent(tool, arguments)
     assert not fake.requests
 
 
-@pytest.mark.parametrize(('path', 'tool', 'arguments'), [
-    ('/api/payments', 'record_payment', {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-12-01',
-                                         'payment_type': 'Miete'}),
-    ('/api/readings/check_plausibility', 'record_meter_reading', {'meter_id': 5, 'reading_date': '2025-12-31',
-                                                                  'value': 131}),
-    ('/api/invoices', 'record_invoice', {'property_id': 1, 'cost_category_id': 3, 'amount': '1',
-                                         'start_date': '2025-01-01', 'end_date': '2025-12-31'}),
-])
+@pytest.mark.parametrize(
+    ('path', 'tool', 'arguments'),
+    [
+        (
+            '/api/payments',
+            'record_payment',
+            {'tenant_id': 1, 'amount': '1', 'payment_date': '2025-12-01', 'payment_type': 'Miete'},
+        ),
+        (
+            '/api/readings/check_plausibility',
+            'record_meter_reading',
+            {'meter_id': 5, 'reading_date': '2025-12-31', 'value': 131},
+        ),
+        (
+            '/api/invoices',
+            'record_invoice',
+            {
+                'property_id': 1,
+                'cost_category_id': 3,
+                'amount': '1',
+                'start_date': '2025-01-01',
+                'end_date': '2025-12-31',
+            },
+        ),
+    ],
+)
 async def test_instance_error_in_the_precheck_reaches_the_model_with_text(path, tool, arguments):
     method = 'POST' if 'check' in path else 'GET'
     fake = sample_data().json(method, path, {'error': 'Datenbank gesperrt.'}, status=500)
@@ -740,7 +1018,8 @@ async def test_missing_invoice_document_in_the_precheck_reaches_the_model_with_t
     fake = sample_data()
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool('upload_invoice_document', {'property_id': 1,
-                                                                 'receipt_path': str(tmp_path / 'fehlt.pdf')})
+        result = await mcp.call_tool(
+            'upload_invoice_document', {'property_id': 1, 'receipt_path': str(tmp_path / 'fehlt.pdf')}
+        )
     assert result.is_error
     assert 'Beleg nicht gefunden' in result.content[0].text

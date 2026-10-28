@@ -69,7 +69,10 @@ def client(fake: FakeNkf, **values: str) -> NkfClient:
 
 
 ME_RECORD = {
-    'username': 'testvermieter', 'ohne_anmeldung': False, 'leerlauf_s': 3600, 'desktop': False,
+    'username': 'testvermieter',
+    'ohne_anmeldung': False,
+    'leerlauf_s': 3600,
+    'desktop': False,
     'schluessel': {'name': 'Assistent', 'umfang': 'erfassen'},
 }
 ME_READ = {**ME_RECORD, 'schluessel': {'name': 'Nur lesen', 'umfang': 'lesen'}}

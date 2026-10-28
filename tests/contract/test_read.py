@@ -17,24 +17,92 @@ pytestmark = pytest.mark.anyio
 FIELDS = {
     '/api/properties': {'id', 'name', 'abrechnungsjahr_beginn', 'is_standalone', 'ist_beispiel'},
     '/api/apartments': {'id', 'property_id'},
-    '/api/properties/{property}/apartments': {'id', 'name', 'sqm', 'is_active', 'nutzungsart', 'eigennutzung',
-                                                'selbstversorger'},
-    '/api/tenants': {'id', 'name', 'apartment_id', 'apartment_name', 'property_name', 'move_in_date',
-                     'move_out_date', 'last_billed_until', 'ist_beispiel'},
-    '/api/categories': {'id', 'name', 'allocation_method', 'requires_meter', 'betrkv_nr', 'betrkv_bezeichnung',
-                        'rechnungen', 'zaehler_anzahl'},
-    '/api/invoices': {'id', 'property_id', 'property_name', 'category_id', 'category_name', 'amount', 'start_date',
-                      'end_date', 'rechnungsdatum', 'invoice_number', 'description', 'provider_id', 'provider_name',
-                      'apartment_id', 'invoice_document_id', 'document_path', 'heizungsanlage_id', 'heizkostenart',
-                      'grundpreis', 'lohnanteil', 'co2_kosten'},
-    '/api/meters': {'id', 'meter_number', 'category_id', 'category_name', 'einheit', 'property_id', 'apartment_id',
-                    'apartment_name', 'is_main_meter', 'has_dual_tariff', 'geeicht_bis', 'ort', 'ersetzt_durch'},
+    '/api/properties/{property}/apartments': {
+        'id',
+        'name',
+        'sqm',
+        'is_active',
+        'nutzungsart',
+        'eigennutzung',
+        'selbstversorger',
+    },
+    '/api/tenants': {
+        'id',
+        'name',
+        'apartment_id',
+        'apartment_name',
+        'property_name',
+        'move_in_date',
+        'move_out_date',
+        'last_billed_until',
+        'ist_beispiel',
+    },
+    '/api/categories': {
+        'id',
+        'name',
+        'allocation_method',
+        'requires_meter',
+        'betrkv_nr',
+        'betrkv_bezeichnung',
+        'rechnungen',
+        'zaehler_anzahl',
+    },
+    '/api/invoices': {
+        'id',
+        'property_id',
+        'property_name',
+        'category_id',
+        'category_name',
+        'amount',
+        'start_date',
+        'end_date',
+        'rechnungsdatum',
+        'invoice_number',
+        'description',
+        'provider_id',
+        'provider_name',
+        'apartment_id',
+        'invoice_document_id',
+        'document_path',
+        'heizungsanlage_id',
+        'heizkostenart',
+        'grundpreis',
+        'lohnanteil',
+        'co2_kosten',
+    },
+    '/api/meters': {
+        'id',
+        'meter_number',
+        'category_id',
+        'category_name',
+        'einheit',
+        'property_id',
+        'apartment_id',
+        'apartment_name',
+        'is_main_meter',
+        'has_dual_tariff',
+        'geeicht_bis',
+        'ort',
+        'ersetzt_durch',
+    },
     '/api/readings': {'id', 'meter_id', 'reading_date', 'value', 'value_nt', 'ablesungsart', 'plausibility_status'},
     '/api/payments': {'id', 'tenant_id', 'tenant_name', 'amount', 'payment_date', 'type'},
     '/api/providers': {'id', 'name'},
-    '/api/billing/reports': {'id', 'tenant_id', 'tenant_name', 'apartment_name', 'property_id', 'property_name',
-                             'start_date', 'end_date', 'created_at', 'veraltet', 'zugestellt_am', 'offen_betrag',
-                             'zahlungsstand'},
+    '/api/billing/reports': {
+        'id',
+        'tenant_id',
+        'tenant_name',
+        'apartment_name',
+        'property_id',
+        'property_name',
+        'start_date',
+        'end_date',
+        'created_at',
+        'veraltet',
+        'zugestellt_am',
+        'offen_betrag',
+        'zahlungsstand',
+    },
 }
 
 
@@ -63,15 +131,36 @@ async def test_field_guard_nested(instance):
     assert {'monat', 'soll', 'ist', 'differenz', 'rueckstand'} <= set(advance['monate'][0])
 
     year = await raw(instance, '/api/jahresabrechnung', property_id=house, jahr=2025)
-    assert {'property_id', 'immobilie', 'jahr', 'von', 'bis', 'frist_ende', 'frist_tage', 'frist_ueberschritten',
-            'kostenarten', 'ablesungen', 'mieter', 'pruefstand'} <= set(year)
-    assert {'id', 'name', 'anzahl', 'summe', 'summe_vorjahr', 'aenderung', 'sprung', 'zustand'} <= \
-        set(year['kostenarten'][0])
+    assert {
+        'property_id',
+        'immobilie',
+        'jahr',
+        'von',
+        'bis',
+        'frist_ende',
+        'frist_tage',
+        'frist_ueberschritten',
+        'kostenarten',
+        'ablesungen',
+        'mieter',
+        'pruefstand',
+    } <= set(year)
+    assert {'id', 'name', 'anzahl', 'summe', 'summe_vorjahr', 'aenderung', 'sprung', 'zustand'} <= set(
+        year['kostenarten'][0]
+    )
     assert {'id', 'name', 'wohnung', 'von', 'bis', 'abrechnung_id', 'zugestellt_am'} <= set(year['mieter'][0])
 
     quality = await raw(instance, f'/api/analytics/data-quality/{house}')
-    assert {'meter_id', 'meter_number', 'category_name', 'apartment_name', 'last_reading_date',
-            'days_since_reading', 'reading_count', 'status'} <= set(quality['meters'][0])
+    assert {
+        'meter_id',
+        'meter_number',
+        'category_name',
+        'apartment_name',
+        'last_reading_date',
+        'days_since_reading',
+        'reading_count',
+        'status',
+    } <= set(quality['meters'][0])
     assert {'type', 'severity', 'message'} <= set(quality['warnings'][0])
 
     events = (await raw(instance, '/api/fristen'))['termine']
@@ -79,12 +168,33 @@ async def test_field_guard_nested(instance):
 
     report = (await raw(instance, '/api/billing/reports'))[0]['id']
     details = await raw(instance, f'/api/billing/reports/{report}/details')
-    assert {'tenant_id', 'start_date', 'end_date', 'version', 'veraltet', 'frist_ende', 'einwendungsfrist_ende',
-            'zugestellt_am', 'offen_betrag', 'zahlungsstand', 'vorauszahlung', 'ergebnis'} <= set(details)
-    assert {'tenant_name', 'apartment', 'property', 'total_amount', 'prepaid_amount', 'balance', 'warnings',
-            'line_items'} <= set(details['ergebnis'])
-    assert {'category', 'billing_type', 'period', 'invoice_id', 'total_amount', 'tenant_cost', 'description'} <= \
-        set(details['ergebnis']['line_items'][0])
+    assert {
+        'tenant_id',
+        'start_date',
+        'end_date',
+        'version',
+        'veraltet',
+        'frist_ende',
+        'einwendungsfrist_ende',
+        'zugestellt_am',
+        'offen_betrag',
+        'zahlungsstand',
+        'vorauszahlung',
+        'ergebnis',
+    } <= set(details)
+    assert {
+        'tenant_name',
+        'apartment',
+        'property',
+        'total_amount',
+        'prepaid_amount',
+        'balance',
+        'warnings',
+        'line_items',
+    } <= set(details['ergebnis'])
+    assert {'category', 'billing_type', 'period', 'invoice_id', 'total_amount', 'tenant_cost', 'description'} <= set(
+        details['ergebnis']['line_items'][0]
+    )
     assert {'bisher', 'neu', 'ab'} <= set(details['vorauszahlung'])
 
 
@@ -128,29 +238,51 @@ async def test_field_guard_check_tools(instance):
     house = await sample_property(instance)
     async with NkfClient(Config.from_env(instance.env('sitzung'))) as nkf:
         anna = next(m['id'] for m in await nkf.get('/api/tenants') if m['name'] == 'Anna Beispiel')
-        precheck = await nkf.post('/api/billing/preflight', {'tenant_id': anna, 'start_date': '2025-01-01',
-                                                                 'end_date': '2025-12-31'})
+        precheck = await nkf.post(
+            '/api/billing/preflight', {'tenant_id': anna, 'start_date': '2025-01-01', 'end_date': '2025-12-31'}
+        )
         meter = next(z for z in await nkf.get('/api/meters') if z['property_id'] == house)
-        reading = max((s for s in await nkf.get('/api/readings') if s['meter_id'] == meter['id']),
-                    key=lambda s: s['reading_date'])
-        plausibility = await nkf.post('/api/readings/check_plausibility', {
-            'meter_id': meter['id'], 'reading_date': reading['reading_date'], 'value': reading['value'] * 3})
-        hausgeld = await nkf.post('/api/hausgeld/pruefen', {
-            'positionen': [{'name': 'Hausmeister', 'gesamtbetrag': '2400', 'eigener_betrag': '300'}],
-            'eigener_anteil': 125, 'gesamtanteile': 1000, 'abrechnungssumme': '300'})
+        reading = max(
+            (s for s in await nkf.get('/api/readings') if s['meter_id'] == meter['id']), key=lambda s: s['reading_date']
+        )
+        plausibility = await nkf.post(
+            '/api/readings/check_plausibility',
+            {'meter_id': meter['id'], 'reading_date': reading['reading_date'], 'value': reading['value'] * 3},
+        )
+        hausgeld = await nkf.post(
+            '/api/hausgeld/pruefen',
+            {
+                'positionen': [{'name': 'Hausmeister', 'gesamtbetrag': '2400', 'eigener_betrag': '300'}],
+                'eigener_anteil': 125,
+                'gesamtanteile': 1000,
+                'abrechnungssumme': '300',
+            },
+        )
         year = await nkf.get('/api/jahresabrechnung', property_id=house, jahr=2025)
         quality = await nkf.get(f'/api/analytics/data-quality/{house}')
     assert {'overall', 'checks'} <= set(precheck)
-    assert {'category', 'meter_type', 'status', 'blocking', 'message', 'meter_number', 'apartment'} <= \
-        set(precheck['checks'][0])
+    assert {'category', 'meter_type', 'status', 'blocking', 'message', 'meter_number', 'apartment'} <= set(
+        precheck['checks'][0]
+    )
     assert {'status', 'message', 'closest_date', 'closest_value', 'diff_percent'} <= set(plausibility)
-    assert {'positionen', 'summe_umlagefaehig', 'summe_eigentuemer', 'summe_offen', 'anzahl_umlagefaehig',
-            'anzahl_eigentuemer', 'anzahl_offen', 'summenprobe', 'zeitraum_hinweis', 'heizkosten_hinweis'} <= \
-        set(hausgeld)
-    assert {'name', 'gesamtbetrag', 'eigener_betrag', 'umlagefaehig', 'erwartet', 'abweichung'} <= \
-        set(hausgeld['positionen'][0])
+    assert {
+        'positionen',
+        'summe_umlagefaehig',
+        'summe_eigentuemer',
+        'summe_offen',
+        'anzahl_umlagefaehig',
+        'anzahl_eigentuemer',
+        'anzahl_offen',
+        'summenprobe',
+        'zeitraum_hinweis',
+        'heizkosten_hinweis',
+    } <= set(hausgeld)
+    assert {'name', 'gesamtbetrag', 'eigener_betrag', 'umlagefaehig', 'erwartet', 'abweichung'} <= set(
+        hausgeld['positionen'][0]
+    )
     assert {'erwartet', 'angesetzt', 'abweichung'} <= set(hausgeld['summenprobe'])
-    assert {'id', 'nummer', 'kostenart', 'wohnung', 'letzte', 'stichtag_ok', 'wechsel_fehlen'} <= \
-        set(year['ablesungen'][0])
+    assert {'id', 'nummer', 'kostenart', 'wohnung', 'letzte', 'stichtag_ok', 'wechsel_fehlen'} <= set(
+        year['ablesungen'][0]
+    )
     assert {'art', 'text', 'tun'} <= set(year['pruefstand'][0])
     assert {'apartment_name', 'category_name', 'tenant_name'} <= set(quality['warnings'][0])

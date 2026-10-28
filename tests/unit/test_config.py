@@ -81,10 +81,17 @@ def test_prompt_on_record_is_the_default(value, expected):
     assert Config.from_env(env).prompt_on_record is expected
 
 
-@pytest.mark.parametrize(('url', 'local'), [
-    ('http://127.0.0.1:6062', True), ('http://localhost:6060', True), ('http://[::1]:6060', True),
-    ('http://nas.local:6060', False), ('https://nkf.example.org', False), ('http://192.168.1.20:6060', False),
-])
+@pytest.mark.parametrize(
+    ('url', 'local'),
+    [
+        ('http://127.0.0.1:6062', True),
+        ('http://localhost:6060', True),
+        ('http://[::1]:6060', True),
+        ('http://nas.local:6060', False),
+        ('https://nkf.example.org', False),
+        ('http://192.168.1.20:6060', False),
+    ],
+)
 def test_local_address_is_detected(url, local):
     assert read(NKF_URL=url).is_local is local
 

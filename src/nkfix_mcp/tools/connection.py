@@ -66,8 +66,10 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         Umfang (lesen oder erfassen), Version der Instanz und Warnungen. Liest nur."""
         me = await nkf.get('/api/auth/me')
         if not isinstance(me, dict):
-            raise ToolError('NebenkostenFix hat auf /api/auth/me keine gültige Antwort geliefert (kein JSON-Objekt). '
-                            'Prüf, ob NKF_URL auf eine NebenkostenFix-Instanz zeigt.')
+            raise ToolError(
+                'NebenkostenFix hat auf /api/auth/me keine gültige Antwort geliefert (kein JSON-Objekt). '
+                'Prüf, ob NKF_URL auf eine NebenkostenFix-Instanz zeigt.'
+            )
         version = await _version(nkf)
 
         open_mode = bool(me.get('ohne_anmeldung'))
@@ -75,30 +77,40 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         warnings: list[str] = []
         if open_mode:
             if config.is_local:
-                warnings.append('NebenkostenFix läuft ohne Anmeldung. Das ist nur auf diesem Rechner '
-                                'erreichbar und damit vertretbar.')
+                warnings.append(
+                    'NebenkostenFix läuft ohne Anmeldung. Das ist nur auf diesem Rechner '
+                    'erreichbar und damit vertretbar.'
+                )
             else:
-                warnings.append(f'NebenkostenFix läuft ohne Anmeldung und ist unter {config.url} '
-                                'erreichbar: jeder, der diese Adresse erreicht, kann alle Daten lesen und '
-                                'ändern. Richte in NebenkostenFix ein Konto ein.')
+                warnings.append(
+                    f'NebenkostenFix läuft ohne Anmeldung und ist unter {config.url} '
+                    'erreichbar: jeder, der diese Adresse erreicht, kann alle Daten lesen und '
+                    'ändern. Richte in NebenkostenFix ein Konto ein.'
+                )
             if config.auth_method != 'offen':
-                warnings.append('Die Instanz ist im offenen Modus; NKF_API_KEY bzw. NKF_USERNAME '
-                                'werden nicht gebraucht.')
+                warnings.append(
+                    'Die Instanz ist im offenen Modus; NKF_API_KEY bzw. NKF_USERNAME werden nicht gebraucht.'
+                )
         elif config.url.startswith('http://') and not config.is_local:
-            warnings.append(f'{config.url} ist unverschlüsselt (http) und nicht lokal: Zugangsdaten und '
-                            'alle Daten gehen im Klartext durchs Netz. Nutze https, z. B. über einen Reverse '
-                            'Proxy.')
+            warnings.append(
+                f'{config.url} ist unverschlüsselt (http) und nicht lokal: Zugangsdaten und '
+                'alle Daten gehen im Klartext durchs Netz. Nutze https, z. B. über einen Reverse '
+                'Proxy.'
+            )
         scope = api_key.get('umfang') if isinstance(api_key, dict) else None
         if scope == 'lesen':
-            warnings.append('Der Zugriffsschlüssel darf nur lesen. Rechnungen, Zählerstände und Zahlungen '
-                            'lassen sich damit nicht erfassen.')
+            warnings.append(
+                'Der Zugriffsschlüssel darf nur lesen. Rechnungen, Zählerstände und Zahlungen '
+                'lassen sich damit nicht erfassen.'
+            )
 
         return Connection(
             url=config.url,
             auth_method='offen' if open_mode else config.auth_method,
             account=me.get('username'),
-            api_key=(ApiKeyInfo(name=api_key.get('name'), scope=api_key.get('umfang'))
-                     if isinstance(api_key, dict) else None),
+            api_key=(
+                ApiKeyInfo(name=api_key.get('name'), scope=api_key.get('umfang')) if isinstance(api_key, dict) else None
+            ),
             version=version,
             can_record=scope != 'lesen',
             warnings=warnings,

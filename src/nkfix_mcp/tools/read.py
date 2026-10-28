@@ -29,9 +29,16 @@ PaymentType = Literal['Miete', 'Nebenkostenvorauszahlung', 'Kaution', 'Nebenkost
 
 PropertyId = Annotated[int, Field(description='ID der Immobilie, siehe Werkzeug list_properties')]
 TenantId = Annotated[int, Field(description='ID des Mieters, siehe Werkzeug list_tenants')]
-BillingYear = Annotated[int, Field(ge=2000, le=2100, description=(
-    'Abrechnungsjahr der Immobilie, das in diesem Kalenderjahr beginnt (siehe billing_year_start), '
-    'z. B. 2025'))]
+BillingYear = Annotated[
+    int,
+    Field(
+        ge=2000,
+        le=2100,
+        description=(
+            'Abrechnungsjahr der Immobilie, das in diesem Kalenderjahr beginnt (siehe billing_year_start), z. B. 2025'
+        ),
+    ),
+]
 
 
 class Property(BaseModel):
@@ -114,9 +121,11 @@ class Invoice(BaseModel):
 
 
 class Invoices(ItemList[Invoice]):
-    total: str = Field(description='Summe der vollen Rechnungsbeträge aller passenden Rechnungen, auch der '
-                                   'weggelassenen; nicht zeitanteilig. Die Kosten eines Jahres je Kostenart '
-                                   'liefert get_billing_year_status.')
+    total: str = Field(
+        description='Summe der vollen Rechnungsbeträge aller passenden Rechnungen, auch der '
+        'weggelassenen; nicht zeitanteilig. Die Kosten eines Jahres je Kostenart '
+        'liefert get_billing_year_status.'
+    )
 
 
 class InvoiceDocument(BaseModel):
@@ -150,8 +159,10 @@ class Meter(BaseModel):
     location: str | None
     replaced_by: int | None
     reading_count: int
-    readings: list[Reading] = Field(description=f'neuester Stand zuerst; ohne meter_id nur der neueste, mit '
-                                                f'meter_id die neuesten {READINGS_PER_METER}')
+    readings: list[Reading] = Field(
+        description=f'neuester Stand zuerst; ohne meter_id nur der neueste, mit '
+        f'meter_id die neuesten {READINGS_PER_METER}'
+    )
 
 
 class Payment(BaseModel):
@@ -252,8 +263,11 @@ class StatementDetails(BaseModel):
     balance: str | None = Field(description='positiv: Nachzahlung des Mieters, negativ: Guthaben')
     line_items: list[LineItem]
     warnings: list[str]
-    new_advance_payment: dict[str, str | None] | None = Field(description=(
-        'vorgeschlagene neue monatliche Vorauszahlung, oder nur ein reason, warum es keinen Vorschlag gibt'))
+    new_advance_payment: dict[str, str | None] | None = Field(
+        description=(
+            'vorgeschlagene neue monatliche Vorauszahlung, oder nur ein reason, warum es keinen Vorschlag gibt'
+        )
+    )
     statement_deadline: str | None
     objection_deadline: str | None
     delivered_at: str | None
@@ -263,54 +277,103 @@ class StatementDetails(BaseModel):
 
 def _tenant(raw: dict[str, Any], apartment_to_property: dict[int, int]) -> Tenant:
     return Tenant(
-        id=raw['id'], name=raw['name'], property_id=apartment_to_property.get(raw.get('apartment_id')),
-        property=raw.get('property_name'), apartment_id=raw.get('apartment_id'), apartment=raw.get('apartment_name'),
-        move_in=raw.get('move_in_date'), move_out=raw.get('move_out_date'),
-        billed_until=raw.get('last_billed_until'), is_example=bool(raw.get('ist_beispiel')))
+        id=raw['id'],
+        name=raw['name'],
+        property_id=apartment_to_property.get(raw.get('apartment_id')),
+        property=raw.get('property_name'),
+        apartment_id=raw.get('apartment_id'),
+        apartment=raw.get('apartment_name'),
+        move_in=raw.get('move_in_date'),
+        move_out=raw.get('move_out_date'),
+        billed_until=raw.get('last_billed_until'),
+        is_example=bool(raw.get('ist_beispiel')),
+    )
 
 
 def _invoice(raw: dict[str, Any]) -> Invoice:
     return Invoice(
-        id=raw['id'], property_id=raw['property_id'], property=raw.get('property_name'),
-        cost_category_id=raw['category_id'], cost_category=raw.get('category_name'), amount=format_money(raw['amount']),
-        start_date=raw.get('start_date'), end_date=raw.get('end_date'), invoice_date=raw.get('rechnungsdatum'),
-        invoice_number=raw.get('invoice_number'), description=raw.get('description'),
-        provider_id=raw.get('provider_id'), provider=raw.get('provider_name'),
-        apartment_id=raw.get('apartment_id'), invoice_document_id=raw.get('invoice_document_id'),
+        id=raw['id'],
+        property_id=raw['property_id'],
+        property=raw.get('property_name'),
+        cost_category_id=raw['category_id'],
+        cost_category=raw.get('category_name'),
+        amount=format_money(raw['amount']),
+        start_date=raw.get('start_date'),
+        end_date=raw.get('end_date'),
+        invoice_date=raw.get('rechnungsdatum'),
+        invoice_number=raw.get('invoice_number'),
+        description=raw.get('description'),
+        provider_id=raw.get('provider_id'),
+        provider=raw.get('provider_name'),
+        apartment_id=raw.get('apartment_id'),
+        invoice_document_id=raw.get('invoice_document_id'),
         has_receipt=bool(raw.get('document_path') or raw.get('invoice_document_id')),
-        heating_system_id=raw.get('heizungsanlage_id'), heating_cost_type=raw.get('heizkostenart'),
-        base_price=format_money(raw.get('grundpreis')), labor_cost=format_money(raw.get('lohnanteil')),
-        co2_cost=format_money(raw.get('co2_kosten')))
+        heating_system_id=raw.get('heizungsanlage_id'),
+        heating_cost_type=raw.get('heizkostenart'),
+        base_price=format_money(raw.get('grundpreis')),
+        labor_cost=format_money(raw.get('lohnanteil')),
+        co2_cost=format_money(raw.get('co2_kosten')),
+    )
 
 
 def _reading(raw: dict[str, Any]) -> Reading:
-    return Reading(id=raw['id'], reading_date=raw['reading_date'], value=raw.get('value'),
-                   value_off_peak=raw.get('value_nt'), reading_type=raw.get('ablesungsart'))
+    return Reading(
+        id=raw['id'],
+        reading_date=raw['reading_date'],
+        value=raw.get('value'),
+        value_off_peak=raw.get('value_nt'),
+        reading_type=raw.get('ablesungsart'),
+    )
 
 
 def _meter(raw: dict[str, Any], readings: list[dict[str, Any]], count: int) -> Meter:
     latest = sorted(readings, key=lambda s: (s['reading_date'], s['id']), reverse=True)
     return Meter(
-        id=raw['id'], number=raw.get('meter_number'), cost_category_id=raw.get('category_id'),
-        cost_category=raw.get('category_name'), unit=raw.get('einheit'), property_id=raw.get('property_id'),
-        apartment_id=raw.get('apartment_id'), apartment=raw.get('apartment_name'),
-        main_meter=bool(raw.get('is_main_meter')), dual_tariff=bool(raw.get('has_dual_tariff')),
-        calibrated_until=raw.get('geeicht_bis'), location=raw.get('ort'), replaced_by=raw.get('ersetzt_durch'),
-        reading_count=len(readings), readings=[_reading(s) for s in latest[:count]])
+        id=raw['id'],
+        number=raw.get('meter_number'),
+        cost_category_id=raw.get('category_id'),
+        cost_category=raw.get('category_name'),
+        unit=raw.get('einheit'),
+        property_id=raw.get('property_id'),
+        apartment_id=raw.get('apartment_id'),
+        apartment=raw.get('apartment_name'),
+        main_meter=bool(raw.get('is_main_meter')),
+        dual_tariff=bool(raw.get('has_dual_tariff')),
+        calibrated_until=raw.get('geeicht_bis'),
+        location=raw.get('ort'),
+        replaced_by=raw.get('ersetzt_durch'),
+        reading_count=len(readings),
+        readings=[_reading(s) for s in latest[:count]],
+    )
 
 
 def _payment(raw: dict[str, Any]) -> Payment:
-    return Payment(id=raw['id'], tenant_id=raw['tenant_id'], tenant=raw.get('tenant_name'),
-                   amount=format_money(raw['amount']), payment_date=raw['payment_date'], payment_type=raw['type'])
+    return Payment(
+        id=raw['id'],
+        tenant_id=raw['tenant_id'],
+        tenant=raw.get('tenant_name'),
+        amount=format_money(raw['amount']),
+        payment_date=raw['payment_date'],
+        payment_type=raw['type'],
+    )
 
 
 def _statement(raw: dict[str, Any]) -> Statement:
     return Statement(
-        id=raw['id'], tenant_id=raw.get('tenant_id'), tenant=raw.get('tenant_name'),
-        apartment=raw.get('apartment_name'), property_id=raw.get('property_id'), property=raw.get('property_name'),
-        start_date=raw.get('start_date'), end_date=raw.get('end_date'), created_at=raw.get('created_at'),
-        outdated=raw.get('veraltet'), delivered_at=raw.get('zugestellt_am'),
-        outstanding_amount=format_money(raw.get('offen_betrag')), payment_status=raw.get('zahlungsstand'))
+        id=raw['id'],
+        tenant_id=raw.get('tenant_id'),
+        tenant=raw.get('tenant_name'),
+        apartment=raw.get('apartment_name'),
+        property_id=raw.get('property_id'),
+        property=raw.get('property_name'),
+        start_date=raw.get('start_date'),
+        end_date=raw.get('end_date'),
+        created_at=raw.get('created_at'),
+        outdated=raw.get('veraltet'),
+        delivered_at=raw.get('zugestellt_am'),
+        outstanding_amount=format_money(raw.get('offen_betrag')),
+        payment_status=raw.get('zahlungsstand'),
+    )
 
 
 def _statement_details(statement_id: int, raw: dict[str, Any]) -> StatementDetails:
@@ -318,21 +381,38 @@ def _statement_details(statement_id: int, raw: dict[str, Any]) -> StatementDetai
     result = raw.get('ergebnis') or raw
     advance_payment = raw.get('vorauszahlung')
     return StatementDetails(
-        id=statement_id, tenant_id=raw.get('tenant_id'), tenant=result.get('tenant_name'),
-        apartment=result.get('apartment'), property=result.get('property'),
-        start_date=raw.get('start_date'), end_date=raw.get('end_date'), version=raw.get('version'),
-        outdated=raw.get('veraltet'), total_costs=format_money(result.get('total_amount')),
-        advance_payments=format_money(result.get('prepaid_amount')), balance=format_money(result.get('balance')),
-        line_items=[LineItem(
-            cost_category=p.get('category'), allocation=p.get('billing_type'), period=p.get('period'),
-            invoice_id=p.get('invoice_id'), invoice_amount=format_money(p.get('total_amount')),
-            tenant_share=format_money(p.get('tenant_cost')), explanation=p.get('description'),
-        ) for p in result.get('line_items') or []],
+        id=statement_id,
+        tenant_id=raw.get('tenant_id'),
+        tenant=result.get('tenant_name'),
+        apartment=result.get('apartment'),
+        property=result.get('property'),
+        start_date=raw.get('start_date'),
+        end_date=raw.get('end_date'),
+        version=raw.get('version'),
+        outdated=raw.get('veraltet'),
+        total_costs=format_money(result.get('total_amount')),
+        advance_payments=format_money(result.get('prepaid_amount')),
+        balance=format_money(result.get('balance')),
+        line_items=[
+            LineItem(
+                cost_category=p.get('category'),
+                allocation=p.get('billing_type'),
+                period=p.get('period'),
+                invoice_id=p.get('invoice_id'),
+                invoice_amount=format_money(p.get('total_amount')),
+                tenant_share=format_money(p.get('tenant_cost')),
+                explanation=p.get('description'),
+            )
+            for p in result.get('line_items') or []
+        ],
         warnings=[str(w) for w in result.get('warnings') or []],
         new_advance_payment=_new_advance_payment(advance_payment),
-        statement_deadline=raw.get('frist_ende'), objection_deadline=raw.get('einwendungsfrist_ende'),
-        delivered_at=raw.get('zugestellt_am'), outstanding_amount=format_money(raw.get('offen_betrag')),
-        payment_status=raw.get('zahlungsstand'))
+        statement_deadline=raw.get('frist_ende'),
+        objection_deadline=raw.get('einwendungsfrist_ende'),
+        delivered_at=raw.get('zugestellt_am'),
+        outstanding_amount=format_money(raw.get('offen_betrag')),
+        payment_status=raw.get('zahlungsstand'),
+    )
 
 
 def _new_advance_payment(raw: dict[str, Any] | None) -> dict[str, str | None] | None:
@@ -341,8 +421,11 @@ def _new_advance_payment(raw: dict[str, Any] | None) -> dict[str, str | None] | 
     if raw.get('neu') is None:
         # No adjustment possible, e.g. because the tenant has moved out: only the reason.
         return {'reason': raw.get('grund')}
-    return {'previous': format_money(raw.get('bisher')), 'new': format_money(raw.get('neu')),
-            'effective_from': raw.get('ab')}
+    return {
+        'previous': format_money(raw.get('bisher')),
+        'new': format_money(raw.get('neu')),
+        'effective_from': raw.get('ab'),
+    }
 
 
 def register(server: MCPServer, nkf: NkfClient) -> None:
@@ -353,82 +436,136 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     @report_errors
     async def list_properties() -> ItemList[Property]:
         """Alle Immobilien (Häuser bzw. Objekte) mit ID und Name. Ausgangspunkt für fast alle anderen Werkzeuge."""
-        return truncate([Property(
-            id=i['id'], name=i['name'], billing_year_start=i.get('abrechnungsjahr_beginn'),
-            standalone=bool(i.get('is_standalone')), is_example=bool(i.get('ist_beispiel')),
-        ) for i in await nkf.get('/api/properties')], MAX_ITEMS)
+        return truncate(
+            [
+                Property(
+                    id=i['id'],
+                    name=i['name'],
+                    billing_year_start=i.get('abrechnungsjahr_beginn'),
+                    standalone=bool(i.get('is_standalone')),
+                    is_example=bool(i.get('ist_beispiel')),
+                )
+                for i in await nkf.get('/api/properties')
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Wohnungen', READ_ONLY)
     @report_errors
     async def list_apartments(property_id: PropertyId) -> ItemList[Apartment]:
         """Die Wohnungen bzw. Einheiten einer Immobilie mit Fläche und Nutzungsart."""
-        return truncate([Apartment(
-            id=w['id'], name=w['name'], area_sqm=w.get('sqm'), active=w.get('is_active'),
-            usage_type=w.get('nutzungsart'), owner_occupied=w.get('eigennutzung'),
-            self_supplied=w.get('selbstversorger'),
-        ) for w in await nkf.get(f'/api/properties/{property_id}/apartments')], MAX_ITEMS)
+        return truncate(
+            [
+                Apartment(
+                    id=w['id'],
+                    name=w['name'],
+                    area_sqm=w.get('sqm'),
+                    active=w.get('is_active'),
+                    usage_type=w.get('nutzungsart'),
+                    owner_occupied=w.get('eigennutzung'),
+                    self_supplied=w.get('selbstversorger'),
+                )
+                for w in await nkf.get(f'/api/properties/{property_id}/apartments')
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Heizungsanlagen', READ_ONLY)
     @report_errors
     async def list_heating_systems(property_id: PropertyId) -> ItemList[HeatingSystem]:
         """Die Heizungsanlagen einer Immobilie (für Heizkostenrechnungen nach HeizkostenV)."""
-        return truncate([HeatingSystem(
-            id=a['id'], name=a['name'], supplies=a.get('versorgt'),
-            consumption_share_percent=a.get('verbrauchsanteil_prozent'), hot_water_method=a.get('warmwasser_weg'),
-        ) for a in await nkf.get(f'/api/properties/{property_id}/heizungsanlagen')], MAX_ITEMS)
+        return truncate(
+            [
+                HeatingSystem(
+                    id=a['id'],
+                    name=a['name'],
+                    supplies=a.get('versorgt'),
+                    consumption_share_percent=a.get('verbrauchsanteil_prozent'),
+                    hot_water_method=a.get('warmwasser_weg'),
+                )
+                for a in await nkf.get(f'/api/properties/{property_id}/heizungsanlagen')
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Mieter', READ_ONLY)
     @report_errors
     async def list_tenants(
         property_id: Annotated[int | None, Field(description='nur Mieter dieser Immobilie')] = None,
-        current_only: Annotated[bool, Field(description='nur Mieter, die heute dort wohnen (eingezogen, nicht '
-                                                        'ausgezogen)')] = False,
+        current_only: Annotated[
+            bool, Field(description='nur Mieter, die heute dort wohnen (eingezogen, nicht ausgezogen)')
+        ] = False,
     ) -> ItemList[Tenant]:
         """Mieter mit Wohnung, Ein- und Auszug und dem Datum, bis zu dem zuletzt abgerechnet wurde."""
         mapping = await apartment_to_property()
         today = date.today().isoformat()
         tenants = [_tenant(m, mapping) for m in await nkf.get('/api/tenants')]
-        return truncate([m for m in tenants
-                         if (property_id is None or m.property_id == property_id)
-                         and (not current_only
-                              or ((m.move_in or '') <= today and (not m.move_out or m.move_out >= today)))],
-                        MAX_ITEMS)
+        return truncate(
+            [
+                m
+                for m in tenants
+                if (property_id is None or m.property_id == property_id)
+                and (not current_only or ((m.move_in or '') <= today and (not m.move_out or m.move_out >= today)))
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Vorauszahlungen (Soll/Ist)', READ_ONLY)
     @report_errors
     async def get_advance_payment_status(
         tenant_id: TenantId,
-        year: Annotated[int | None, Field(description='nur die Monate dieses Kalenderjahrs; Summen gelten immer '
-                                                      'für die ganze Mietzeit')] = None,
+        year: Annotated[
+            int | None,
+            Field(description='nur die Monate dieses Kalenderjahrs; Summen gelten immer für die ganze Mietzeit'),
+        ] = None,
     ) -> AdvancePayments:
         """Soll und Ist der Nebenkostenvorauszahlungen eines Mieters je Monat, mit offenem Betrag und Saldo."""
         raw = await nkf.get(f'/api/tenants/{tenant_id}/vorauszahlungen')
         return AdvancePayments(
-            months=[Month(month=m['monat'], expected=format_money(m.get('soll')), actual=format_money(m.get('ist')),
-                          difference=format_money(m.get('differenz')), arrears=m.get('rueckstand'),
-                          is_current=m.get('laufend'))
-                    for m in raw.get('monate') or [] if year is None or m['monat'].startswith(f'{year}-')],
-            outstanding=format_money(raw.get('offen')), overpaid=format_money(raw.get('ueberzahlt')),
-            balance=format_money(raw.get('saldo')))
+            months=[
+                Month(
+                    month=m['monat'],
+                    expected=format_money(m.get('soll')),
+                    actual=format_money(m.get('ist')),
+                    difference=format_money(m.get('differenz')),
+                    arrears=m.get('rueckstand'),
+                    is_current=m.get('laufend'),
+                )
+                for m in raw.get('monate') or []
+                if year is None or m['monat'].startswith(f'{year}-')
+            ],
+            outstanding=format_money(raw.get('offen')),
+            overpaid=format_money(raw.get('ueberzahlt')),
+            balance=format_money(raw.get('saldo')),
+        )
 
     @tool(server, 'Kostenarten', READ_ONLY)
     @report_errors
     async def list_cost_categories() -> ItemList[CostCategory]:
         """Kostenarten (Betriebskostenarten nach BetrKV) mit Umlageschlüssel. Die ID braucht man zum Erfassen
         von Rechnungen."""
-        return truncate([CostCategory(
-            id=k['id'], name=k['name'], allocation=k.get('allocation_method'),
-            requires_meter=bool(k.get('requires_meter')), betrkv_number=k.get('betrkv_nr'),
-            betrkv_label=k.get('betrkv_bezeichnung'), invoice_count=k.get('rechnungen'),
-            meter_count=k.get('zaehler_anzahl'),
-        ) for k in await nkf.get('/api/categories')], MAX_ITEMS)
+        return truncate(
+            [
+                CostCategory(
+                    id=k['id'],
+                    name=k['name'],
+                    allocation=k.get('allocation_method'),
+                    requires_meter=bool(k.get('requires_meter')),
+                    betrkv_number=k.get('betrkv_nr'),
+                    betrkv_label=k.get('betrkv_bezeichnung'),
+                    invoice_count=k.get('rechnungen'),
+                    meter_count=k.get('zaehler_anzahl'),
+                )
+                for k in await nkf.get('/api/categories')
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Dienstleister', READ_ONLY)
     @report_errors
     async def list_providers() -> ItemList[Provider]:
         """Dienstleister bzw. Versorger (Rechnungssteller), die in NebenkostenFix angelegt sind."""
-        return truncate([Provider(id=d['id'], name=d['name']) for d in await nkf.get('/api/providers')],
-                        MAX_ITEMS)
+        return truncate([Provider(id=d['id'], name=d['name']) for d in await nkf.get('/api/providers')], MAX_ITEMS)
 
     @tool(server, 'Rechnungen', READ_ONLY)
     @report_errors
@@ -439,10 +576,13 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     ) -> Invoices:
         """Rechnungen (Kosten) mit Betrag, Zeitraum, Kostenart und ob ein Beleg hinterlegt ist. Eine Rechnung
         zählt zu einem Jahr, wenn sich ihr Zeitraum mit dem Jahr überschneidet."""
-        matching = [r for r in (_invoice(raw) for raw in await nkf.get('/api/invoices'))
-                    if (property_id is None or r.property_id == property_id)
-                    and (cost_category_id is None or r.cost_category_id == cost_category_id)
-                    and (year is None or in_year(r.start_date, r.end_date, year))]
+        matching = [
+            r
+            for r in (_invoice(raw) for raw in await nkf.get('/api/invoices'))
+            if (property_id is None or r.property_id == property_id)
+            and (cost_category_id is None or r.cost_category_id == cost_category_id)
+            and (year is None or in_year(r.start_date, r.end_date, year))
+        ]
         matching.sort(key=lambda r: (r.start_date or '', r.id))
         items = truncate(matching, MAX_INVOICES)
         return Invoices(**dict(items), total=total(r.amount for r in matching))
@@ -453,11 +593,20 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         property_id: Annotated[int | None, Field(description='nur Belege dieser Immobilie')] = None,
     ) -> ItemList[InvoiceDocument]:
         """Hochgeladene Belege, die mehrere Rechnungen enthalten können (Sammelbelege)."""
-        return truncate([InvoiceDocument(
-            id=b['id'], property_id=b.get('property_id'), filename=b.get('filename'),
-            description=b.get('description'), uploaded_at=b.get('upload_date'),
-        ) for b in await nkf.get('/api/invoice_documents')
-            if property_id is None or b.get('property_id') == property_id], MAX_ITEMS)
+        return truncate(
+            [
+                InvoiceDocument(
+                    id=b['id'],
+                    property_id=b.get('property_id'),
+                    filename=b.get('filename'),
+                    description=b.get('description'),
+                    uploaded_at=b.get('upload_date'),
+                )
+                for b in await nkf.get('/api/invoice_documents')
+                if property_id is None or b.get('property_id') == property_id
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Zähler und Stände', READ_ONLY)
     @report_errors
@@ -470,9 +619,14 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         for reading in await nkf.get('/api/readings'):
             readings.setdefault(reading['meter_id'], []).append(reading)
         count = 1 if meter_id is None else READINGS_PER_METER
-        return truncate([_meter(z, readings.get(z['id'], []), count) for z in await nkf.get('/api/meters')
-                         if z.get('property_id') == property_id and (meter_id is None or z['id'] == meter_id)],
-                        MAX_ITEMS)
+        return truncate(
+            [
+                _meter(z, readings.get(z['id'], []), count)
+                for z in await nkf.get('/api/meters')
+                if z.get('property_id') == property_id and (meter_id is None or z['id'] == meter_id)
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Zahlungen', READ_ONLY)
     @report_errors
@@ -482,10 +636,13 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         payment_type: Annotated[PaymentType | None, Field(description='nur diese Art')] = None,
     ) -> Payments:
         """Eingegangene Zahlungen von Mietern (Miete, Vorauszahlungen, Kaution, Nachzahlungen), neueste zuerst."""
-        matching = [z for z in (_payment(raw) for raw in await nkf.get('/api/payments'))
-                    if (tenant_id is None or z.tenant_id == tenant_id)
-                    and (year is None or z.payment_date.startswith(f'{year}-'))
-                    and (payment_type is None or z.payment_type == payment_type)]
+        matching = [
+            z
+            for z in (_payment(raw) for raw in await nkf.get('/api/payments'))
+            if (tenant_id is None or z.tenant_id == tenant_id)
+            and (year is None or z.payment_date.startswith(f'{year}-'))
+            and (payment_type is None or z.payment_type == payment_type)
+        ]
         matching.sort(key=lambda z: (z.payment_date, z.id), reverse=True)
         items = truncate(matching, MAX_ITEMS)
         return Payments(**dict(items), total=total(z.amount for z in matching))
@@ -497,8 +654,14 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     ) -> ItemList[Deadline]:
         """Anstehende Termine und Fristen: Abrechnungsfristen, Einwendungsfristen, Eichfristen."""
         events = (await nkf.get('/api/fristen')).get('termine') or []
-        return truncate([Deadline(date=t['datum'], kind=t['art'], title=t['titel']) for t in events
-                         if until is None or t['datum'] <= until], MAX_ITEMS)
+        return truncate(
+            [
+                Deadline(date=t['datum'], kind=t['art'], title=t['titel'])
+                for t in events
+                if until is None or t['datum'] <= until
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Datenqualität', READ_ONLY)
     @report_errors
@@ -506,15 +669,31 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         """Prüft den Datenbestand einer Immobilie: veraltete Zählerstände und fehlende Zähler."""
         raw = await nkf.get(f'/api/analytics/data-quality/{property_id}')
         return DataQuality(
-            meters=[{'meter_id': z.get('meter_id'), 'number': z.get('meter_number'),
-                     'cost_category': z.get('category_name'), 'apartment': z.get('apartment_name'),
-                     'last_reading_date': z.get('last_reading_date'),
-                     'days_since_reading': z.get('days_since_reading'),
-                     'reading_count': z.get('reading_count'), 'status': z.get('status')}
-                    for z in raw.get('meters') or []],
-            warnings=[{'type': w.get('type'), 'severity': w.get('severity'), 'message': w.get('message'),
-                       'apartment': w.get('apartment_name'), 'cost_category': w.get('category_name'),
-                       'tenant': w.get('tenant_name')} for w in raw.get('warnings') or []])
+            meters=[
+                {
+                    'meter_id': z.get('meter_id'),
+                    'number': z.get('meter_number'),
+                    'cost_category': z.get('category_name'),
+                    'apartment': z.get('apartment_name'),
+                    'last_reading_date': z.get('last_reading_date'),
+                    'days_since_reading': z.get('days_since_reading'),
+                    'reading_count': z.get('reading_count'),
+                    'status': z.get('status'),
+                }
+                for z in raw.get('meters') or []
+            ],
+            warnings=[
+                {
+                    'type': w.get('type'),
+                    'severity': w.get('severity'),
+                    'message': w.get('message'),
+                    'apartment': w.get('apartment_name'),
+                    'cost_category': w.get('category_name'),
+                    'tenant': w.get('tenant_name'),
+                }
+                for w in raw.get('warnings') or []
+            ],
+        )
 
     @tool(server, 'Jahresabrechnung (Stand)', READ_ONLY)
     @report_errors
@@ -524,38 +703,84 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         Abrechnungsfrist."""
         raw = await nkf.get('/api/jahresabrechnung', property_id=property_id, jahr=year)
         return {
-            'property_id': raw.get('property_id'), 'property': raw.get('immobilie'), 'year': raw.get('jahr'),
-            'start_date': raw.get('von'), 'end_date': raw.get('bis'), 'statement_deadline': raw.get('frist_ende'),
-            'deadline_days': raw.get('frist_tage'), 'deadline_exceeded': raw.get('frist_ueberschritten'),
-            'cost_categories': [{'id': k.get('id'), 'name': k.get('name'), 'invoice_count': k.get('anzahl'),
-                                 'total': format_money(k.get('summe')),
-                                 'total_previous_year': format_money(k.get('summe_vorjahr')),
-                                 'change_percent': k.get('aenderung'), 'jump': k.get('sprung'),
-                                 'state': k.get('zustand')} for k in raw.get('kostenarten') or []],
-            'readings': [{'meter_id': a.get('id'), 'number': a.get('nummer'), 'cost_category': a.get('kostenart'),
-                          'apartment': a.get('wohnung'), 'last_reading_date': a.get('letzte'),
-                          'cutoff_ok': a.get('stichtag_ok'), 'missing_change_readings': a.get('wechsel_fehlen')}
-                         for a in raw.get('ablesungen') or []],
-            'tenants': [{'id': m.get('id'), 'name': m.get('name'), 'apartment': m.get('wohnung'),
-                         'start_date': m.get('von'), 'end_date': m.get('bis'), 'statement_id': m.get('abrechnung_id'),
-                         'delivered_at': m.get('zugestellt_am')} for m in raw.get('mieter') or []],
-            'open_issues': [{'type': p.get('art'), 'message': p.get('text'), 'action': p.get('tun')}
-                            for p in raw.get('pruefstand') or []],
+            'property_id': raw.get('property_id'),
+            'property': raw.get('immobilie'),
+            'year': raw.get('jahr'),
+            'start_date': raw.get('von'),
+            'end_date': raw.get('bis'),
+            'statement_deadline': raw.get('frist_ende'),
+            'deadline_days': raw.get('frist_tage'),
+            'deadline_exceeded': raw.get('frist_ueberschritten'),
+            'cost_categories': [
+                {
+                    'id': k.get('id'),
+                    'name': k.get('name'),
+                    'invoice_count': k.get('anzahl'),
+                    'total': format_money(k.get('summe')),
+                    'total_previous_year': format_money(k.get('summe_vorjahr')),
+                    'change_percent': k.get('aenderung'),
+                    'jump': k.get('sprung'),
+                    'state': k.get('zustand'),
+                }
+                for k in raw.get('kostenarten') or []
+            ],
+            'readings': [
+                {
+                    'meter_id': a.get('id'),
+                    'number': a.get('nummer'),
+                    'cost_category': a.get('kostenart'),
+                    'apartment': a.get('wohnung'),
+                    'last_reading_date': a.get('letzte'),
+                    'cutoff_ok': a.get('stichtag_ok'),
+                    'missing_change_readings': a.get('wechsel_fehlen'),
+                }
+                for a in raw.get('ablesungen') or []
+            ],
+            'tenants': [
+                {
+                    'id': m.get('id'),
+                    'name': m.get('name'),
+                    'apartment': m.get('wohnung'),
+                    'start_date': m.get('von'),
+                    'end_date': m.get('bis'),
+                    'statement_id': m.get('abrechnung_id'),
+                    'delivered_at': m.get('zugestellt_am'),
+                }
+                for m in raw.get('mieter') or []
+            ],
+            'open_issues': [
+                {'type': p.get('art'), 'message': p.get('text'), 'action': p.get('tun')}
+                for p in raw.get('pruefstand') or []
+            ],
         }
 
     @tool(server, 'Abrechnungsvorschläge', READ_ONLY)
     @report_errors
     async def list_billing_suggestions() -> ItemList[BillingSuggestion]:
         """Mieter, für die eine Nebenkostenabrechnung fällig ist, mit vorgeschlagenem Zeitraum."""
-        return truncate([BillingSuggestion(
-            tenant_id=v['tenant_id'], tenant=v.get('tenant_name'), apartment=v.get('apartment_name'),
-            start_date=v.get('suggested_start'), end_date=v.get('suggested_end'),
-            cost_categories=[SuggestedCostCategory(
-                cost_category_id=k['category_id'], cost_category=k.get('category_name'),
-                start_date=k.get('suggested_start'), end_date=k.get('suggested_end'),
-                invoice_count=k.get('invoice_count'),
-            ) for k in v.get('categories') or []],
-        ) for v in await nkf.get('/api/billing/suggestions')], MAX_ITEMS)
+        return truncate(
+            [
+                BillingSuggestion(
+                    tenant_id=v['tenant_id'],
+                    tenant=v.get('tenant_name'),
+                    apartment=v.get('apartment_name'),
+                    start_date=v.get('suggested_start'),
+                    end_date=v.get('suggested_end'),
+                    cost_categories=[
+                        SuggestedCostCategory(
+                            cost_category_id=k['category_id'],
+                            cost_category=k.get('category_name'),
+                            start_date=k.get('suggested_start'),
+                            end_date=k.get('suggested_end'),
+                            invoice_count=k.get('invoice_count'),
+                        )
+                        for k in v.get('categories') or []
+                    ],
+                )
+                for v in await nkf.get('/api/billing/suggestions')
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Abrechnungen', READ_ONLY)
     @report_errors
@@ -564,9 +789,15 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         property_id: Annotated[int | None, Field(description='nur Abrechnungen dieser Immobilie')] = None,
     ) -> ItemList[Statement]:
         """Erstellte Nebenkostenabrechnungen mit Zeitraum, Zustellung und offenem Betrag."""
-        return truncate([a for a in (_statement(raw) for raw in await nkf.get('/api/billing/reports'))
-                         if (tenant_id is None or a.tenant_id == tenant_id)
-                         and (property_id is None or a.property_id == property_id)], MAX_ITEMS)
+        return truncate(
+            [
+                a
+                for a in (_statement(raw) for raw in await nkf.get('/api/billing/reports'))
+                if (tenant_id is None or a.tenant_id == tenant_id)
+                and (property_id is None or a.property_id == property_id)
+            ],
+            MAX_ITEMS,
+        )
 
     @tool(server, 'Abrechnung im Detail', READ_ONLY)
     @report_errors

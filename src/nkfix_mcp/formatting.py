@@ -59,7 +59,8 @@ def truncate(items: Sequence[T], limit: int) -> ItemList[T]:
     omitted = max(0, len(items) - limit)
     note = None
     if omitted:
-        note = (f'{omitted} weitere Einträge weggelassen. Grenze die Abfrage mit den Filtern ein '
-                '(z. B. Immobilie, Jahr, Mieter).')
-    return ItemList[T](count=len(items), items=list(items[:limit]), omitted=omitted,
-                       note=note)
+        note = (
+            f'{omitted} weitere Einträge weggelassen. Grenze die Abfrage mit den Filtern ein '
+            '(z. B. Immobilie, Jahr, Mieter).'
+        )
+    return ItemList[T](count=len(items), items=list(items[:limit]), omitted=omitted, note=note)

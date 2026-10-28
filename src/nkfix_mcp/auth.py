@@ -96,17 +96,18 @@ class SessionAuth(OpenAccess):
         if response.status_code == HTTPStatus.CONFLICT:
             error = errors.NkfError(
                 'Diese NebenkostenFix-Instanz läuft ohne Anmeldung. Lass NKF_USERNAME und NKF_PASSWORD weg.',
-                HTTPStatus.CONFLICT)
+                HTTPStatus.CONFLICT,
+            )
         elif response.status_code == HTTPStatus.UNAUTHORIZED:
             # /login answers without ``code``, unlike the API routes.
             error = errors.NkfError(
                 'NebenkostenFix hat die Anmeldung abgelehnt. Prüfe NKF_USERNAME und NKF_PASSWORD.',
-                HTTPStatus.UNAUTHORIZED)
+                HTTPStatus.UNAUTHORIZED,
+            )
         else:
             error = errors.from_response(response, self.auth_method)
         if response.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.CONFLICT, HTTPStatus.TOO_MANY_REQUESTS):
-            error = errors.NkfError(f'{error} Nach der Korrektur den MCP-Server neu starten.',
-                                    error.status, error.code)
+            error = errors.NkfError(f'{error} Nach der Korrektur den MCP-Server neu starten.', error.status, error.code)
             self._rejected = error
         raise error
 

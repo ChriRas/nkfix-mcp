@@ -76,9 +76,11 @@ def read_receipt(path: str, directory: Path | None) -> Receipt:
     try:
         fd = os.open(file, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
     except PermissionError:
-        raise ReceiptError(f'Kein Lesezugriff auf {shown_path}. Unter macOS braucht der Prozess, der den MCP-Server '
-                           'startet, Zugriff auf diesen Ordner (Systemeinstellungen → Datenschutz & Sicherheit), '
-                           'oder leg den Beleg in den Belegordner (NKF_RECEIPT_DIR).') from None
+        raise ReceiptError(
+            f'Kein Lesezugriff auf {shown_path}. Unter macOS braucht der Prozess, der den MCP-Server '
+            'startet, Zugriff auf diesen Ordner (Systemeinstellungen → Datenschutz & Sicherheit), '
+            'oder leg den Beleg in den Belegordner (NKF_RECEIPT_DIR).'
+        ) from None
     except OSError as error:
         raise ReceiptError(f'Beleg nicht lesbar: {shown_path} ({type(error).__name__}).') from None
     if not stat.S_ISREG(os.fstat(fd).st_mode):
@@ -90,6 +92,8 @@ def read_receipt(path: str, directory: Path | None) -> Receipt:
         raise ReceiptError(f'{file.name} ist zu groß (höchstens {MAX_RECEIPT_BYTES // 1024 // 1024} MB).')
     mime = sniff_mime(content[:SNIFF_BYTES])
     if mime is None:
-        raise ReceiptError(f'{file.name} ist kein Beleg, den NebenkostenFix annimmt. Erlaubt sind PDF, JPEG, PNG, '
-                           'WebP oder HEIC; erkannt wird am Inhalt, nicht an der Endung.')
+        raise ReceiptError(
+            f'{file.name} ist kein Beleg, den NebenkostenFix annimmt. Erlaubt sind PDF, JPEG, PNG, '
+            'WebP oder HEIC; erkannt wird am Inhalt, nicht an der Endung.'
+        )
     return Receipt(filename=file.name, content=content, mime=mime)

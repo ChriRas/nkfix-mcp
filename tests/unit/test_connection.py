@@ -81,12 +81,15 @@ async def test_server_has_instructions_for_the_assistant():
     assert 'NebenkostenFix' in server.instructions
 
 
-@pytest.mark.parametrize(('me', 'values', 'expected'), [
-    (ME_RECORD, {}, 'erfassen'),
-    (ME_READ, {}, 'lesen'),
-    (ME_SESSION, {'NKF_API_KEY': None, 'NKF_USERNAME': 'a', 'NKF_PASSWORD': 'b'}, 'erfassen'),
-    (ME_OPEN, {'NKF_API_KEY': None}, 'erfassen'),
-])
+@pytest.mark.parametrize(
+    ('me', 'values', 'expected'),
+    [
+        (ME_RECORD, {}, 'erfassen'),
+        (ME_READ, {}, 'lesen'),
+        (ME_SESSION, {'NKF_API_KEY': None, 'NKF_USERNAME': 'a', 'NKF_PASSWORD': 'b'}, 'erfassen'),
+        (ME_OPEN, {'NKF_API_KEY': None}, 'erfassen'),
+    ],
+)
 async def test_scope_is_fetched_at_startup(me, values, expected):
     fake = FakeNkf().json('GET', '/api/auth/me', me)
     fake.set_route('POST', '/login', json_response(200, {'username': 'a'}, {'Set-Cookie': 'session=a'}))
@@ -94,15 +97,20 @@ async def test_scope_is_fetched_at_startup(me, values, expected):
         assert await fetch_scope(nkf) == expected
 
 
-@pytest.mark.parametrize('response', [
-    json_response(500, {'error': 'kaputt'}),
-    httpx2.Response(200, text='<html>Proxy-Anmeldung</html>'),
-    'verbindung_abgelehnt',
-])
+@pytest.mark.parametrize(
+    'response',
+    [
+        json_response(500, {'error': 'kaputt'}),
+        httpx2.Response(200, text='<html>Proxy-Anmeldung</html>'),
+        'verbindung_abgelehnt',
+    ],
+)
 async def test_scope_stays_undetermined_when_the_instance_does_not_answer_properly(response):
     if response == 'verbindung_abgelehnt':
+
         def response(request):
             raise httpx2.ConnectError('abgelehnt', request=request)
+
     fake = FakeNkf().set_route('GET', '/api/auth/me', response)
     async with client(fake) as nkf:
         assert await fetch_scope(nkf) is None

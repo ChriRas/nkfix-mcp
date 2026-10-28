@@ -40,31 +40,40 @@ class Config:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
-        values = {name: _env_value(env, name) for name in (
-            'NKF_URL', 'NKF_API_KEY', 'NKF_USERNAME', 'NKF_PASSWORD',
-            'NKF_RECEIPT_DIR', 'NKF_NO_RECORD_PROMPT')}
+        values = {
+            name: _env_value(env, name)
+            for name in (
+                'NKF_URL',
+                'NKF_API_KEY',
+                'NKF_USERNAME',
+                'NKF_PASSWORD',
+                'NKF_RECEIPT_DIR',
+                'NKF_NO_RECORD_PROMPT',
+            )
+        }
 
         url = values['NKF_URL']
         if not url:
             raise ConfigError(
-                'NKF_URL fehlt. Gib die Adresse deiner NebenkostenFix-Instanz an, '
-                'z. B. NKF_URL=http://127.0.0.1:6060.')
+                'NKF_URL fehlt. Gib die Adresse deiner NebenkostenFix-Instanz an, z. B. NKF_URL=http://127.0.0.1:6060.'
+            )
         parts = urlsplit(url)
         if parts.username is not None or parts.password is not None:
             # Do not name the value: the password would end up in the message,
             # and httpx2 would silently send it as Basic auth.
             raise ConfigError(
                 'NKF_URL enthält Zugangsdaten (benutzer:passwort@…). Das ist nicht erlaubt, sie landeten in '
-                'Meldungen und Logs. Für NebenkostenFix nutze NKF_API_KEY.')
+                'Meldungen und Logs. Für NebenkostenFix nutze NKF_API_KEY.'
+            )
         if parts.scheme not in ('http', 'https') or not parts.hostname:
-            raise ConfigError(
-                f'NKF_URL ist keine gültige Adresse: {url!r}. Erwartet wird http://… oder https://….')
+            raise ConfigError(f'NKF_URL ist keine gültige Adresse: {url!r}. Erwartet wird http://… oder https://….')
 
         api_key = values['NKF_API_KEY']
         if api_key and not api_key.startswith(KEY_PREFIX):
             raise ConfigError(
                 f'NKF_API_KEY beginnt nicht mit „{KEY_PREFIX}“. Kopiere den Zugriffsschlüssel '
-                'vollständig aus NebenkostenFix (Einstellungen → Konto).')
+                'vollständig aus NebenkostenFix (Einstellungen → Konto).'
+            )
 
         username, password = values['NKF_USERNAME'], values['NKF_PASSWORD']
         if username and not password:
@@ -79,8 +88,14 @@ class Config:
                 raise ConfigError(f'NKF_RECEIPT_DIR ist kein vorhandener Ordner: {receipt_dir}')
 
         skip_prompt = (values['NKF_NO_RECORD_PROMPT'] or '').lower() in _YES
-        return cls(url=url.rstrip('/'), api_key=api_key, username=username, password=password,
-                   receipt_dir=receipt_dir, prompt_on_record=not skip_prompt)
+        return cls(
+            url=url.rstrip('/'),
+            api_key=api_key,
+            username=username,
+            password=password,
+            receipt_dir=receipt_dir,
+            prompt_on_record=not skip_prompt,
+        )
 
     @property
     def auth_method(self) -> AuthMethod:
@@ -108,5 +123,6 @@ def _env_value(env: Mapping[str, str], name: str) -> str | None:
         # Do not name the value: NKF_API_KEY might contain half a key.
         raise ConfigError(
             f'{name} enthält eine nicht aufgelöste Variable (${{…}}). Setze die Variable in der '
-            'Umgebung, bevor Claude startet, oder trage den Wert direkt ein.')
+            'Umgebung, bevor Claude startet, oder trage den Wert direkt ein.'
+        )
     return value or None

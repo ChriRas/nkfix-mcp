@@ -116,6 +116,7 @@ async def test_confirmation_is_its_own_exception_with_the_body():
 async def test_unreachable():
     def broken(request):
         raise httpx2.ConnectError('Verbindung abgelehnt', request=request)
+
     error = await fail_on(broken)
     assert 'nicht erreichbar' in str(error)
     assert URL in str(error)
@@ -123,8 +124,11 @@ async def test_unreachable():
 
 async def test_session_logs_in_first_and_then_sends_the_cookie():
     fake = FakeNkf()
-    fake.set_route('POST', '/login', json_response(200, {'username': 'testvermieter'},
-                                                 {'Set-Cookie': 'session=abc; Path=/; HttpOnly'}))
+    fake.set_route(
+        'POST',
+        '/login',
+        json_response(200, {'username': 'testvermieter'}, {'Set-Cookie': 'session=abc; Path=/; HttpOnly'}),
+    )
     fake.json('GET', '/api/properties', [])
     async with client(fake, **SESSION) as nkf:
         await nkf.get('/api/properties')
@@ -187,8 +191,9 @@ async def test_wrong_password_is_tried_only_once():
 
 
 async def test_locked_login_is_not_retried():
-    fake = FakeNkf().json('POST', '/login', {'error': 'gesperrt', 'code': 'anmeldung_gesperrt'}, status=429,
-                          **{'Retry-After': '900'})
+    fake = FakeNkf().json(
+        'POST', '/login', {'error': 'gesperrt', 'code': 'anmeldung_gesperrt'}, status=429, **{'Retry-After': '900'}
+    )
     async with client(fake, **SESSION) as nkf:
         for _ in range(2):
             with pytest.raises(NkfError, match='900 Sekunden'):

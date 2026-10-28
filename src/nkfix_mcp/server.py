@@ -73,8 +73,7 @@ def build_server(nkf: NkfClient, scope: Scope | None = None, lifespan: Lifespan 
 
 
 def main() -> None:
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO,
-                        format='%(asctime)s %(name)s %(levelname)s %(message)s')
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
     try:
         config = Config.from_env(os.environ)
     except ConfigError as error:
@@ -85,8 +84,9 @@ def main() -> None:
     if scope:
         log.info('Verbunden mit %s (%s), Umfang %s.', config.url, config.auth_method, scope)
     else:
-        log.warning('NebenkostenFix unter %s war beim Start nicht erreichbar; alle Werkzeuge werden angeboten.',
-                    config.url)
+        log.warning(
+            'NebenkostenFix unter %s war beim Start nicht erreichbar; alle Werkzeuge werden angeboten.', config.url
+        )
     nkf = NkfClient(config)
 
     @asynccontextmanager

@@ -25,8 +25,9 @@ READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 T = TypeVar('T')
 
 
-def tool(server: MCPServer, title: str, annotations: ToolAnnotations,
-         meta: dict[str, Any] | None = None) -> Callable[[T], T]:
+def tool(
+    server: MCPServer, title: str, annotations: ToolAnnotations, meta: dict[str, Any] | None = None
+) -> Callable[[T], T]:
     """Registers a tool with its German title, which people see instead of the English name.
 
     Claude Code shows ``annotations.title`` (checked against version 2.1.312), the MCP
@@ -45,8 +46,9 @@ def _calendar_day(text: str) -> str:
     return text
 
 
-IsoDate = Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Datum als YYYY-MM-DD'),
-                    AfterValidator(_calendar_day)]
+IsoDate = Annotated[
+    str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Datum als YYYY-MM-DD'), AfterValidator(_calendar_day)
+]
 
 
 def report_errors(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
