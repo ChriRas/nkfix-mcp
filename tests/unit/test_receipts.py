@@ -200,10 +200,11 @@ async def test_receipt_dir_from_config_applies(tmp_path):
 
 async def test_upload_invoice_document_is_a_record_tool():
     nkf = client(FakeNkf())
-    async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
-        assert 'upload_invoice_document' not in {w.name for w in (await mcp.list_tools()).tools}
-    async with Client(build_server(nkf, 'erfassen')) as mcp:
-        tool = next(w for w in (await mcp.list_tools()).tools if w.name == 'upload_invoice_document')
+    async with nkf:
+        async with Client(build_server(nkf, 'lesen')) as mcp:
+            assert 'upload_invoice_document' not in {w.name for w in (await mcp.list_tools()).tools}
+        async with Client(build_server(nkf, 'erfassen')) as mcp:
+            tool = next(w for w in (await mcp.list_tools()).tools if w.name == 'upload_invoice_document')
     assert tool.annotations.read_only_hint is False
     assert tool.meta == {'anthropic/requiresUserInteraction': True}
 

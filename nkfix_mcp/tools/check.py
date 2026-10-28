@@ -42,8 +42,10 @@ class StatementPrecheck(BaseModel):
 
 class Plausibility(BaseModel):
     status: str = Field(description='ok, success, warning oder unknown')
-    checked: bool = Field(description='false: es gab nichts zum Vergleichen (keine Ablesung binnen 30 Tagen); '
-                                      'ein „ok“ sagt dann nichts über den Wert')
+    checked: bool = Field(description='true: NebenkostenFix hat verglichen, entweder mit einer Ablesung binnen 30 '
+                                      'Tagen (dann steht reference_date) oder, bei warning/success, auch ohne sie. '
+                                      'false: es gab nichts zum Vergleichen; ein „ok“ sagt dann nichts über den '
+                                      'Wert')
     message: str | None
     reference_date: str | None = Field(description='Datum der nächstgelegenen bekannten Ablesung')
     reference_value: float | None

@@ -126,3 +126,19 @@ async def test_secret_appears_in_no_tool_output(caplog):
     for result in (good, bad):
         assert API_KEY not in str(result.structured_content) + result.content[0].text
     assert API_KEY not in caplog.text
+
+
+@pytest.mark.parametrize('me', [None, [], 'ok'])
+async def test_me_answer_without_object_gives_a_clear_message(me):
+    fake = FakeNkf().json('GET', '/api/auth/me', me).json('GET', '/api/ueber', ABOUT)
+    result = await call(fake, 'check_connection')
+    assert result.is_error
+    assert 'keine gültige Antwort' in result.content[0].text and '/api/auth/me' in result.content[0].text
+
+
+@pytest.mark.parametrize('about', [None, [], 'ok'])
+async def test_about_answer_without_object_leaves_the_version_open(about):
+    fake = FakeNkf().json('GET', '/api/auth/me', ME_RECORD).json('GET', '/api/ueber', about)
+    result = await call(fake, 'check_connection')
+    assert not result.is_error, result.content[0].text
+    assert result.structured_content['version'] is None

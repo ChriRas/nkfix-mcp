@@ -559,7 +559,7 @@ async def test_money_with_decimal_comma_is_understood():
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0])['amount'] == '1234.50'
 
 
-async def test_invoice_response_without_id_does_not_crash(monkeypatch):
+async def test_invoice_response_without_id_does_not_crash():
     # Response 201 without id (e.g. an older instance): no crash.
     fake = sample_data().set_route('POST', '/api/invoices', json_response(201, {}))
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='5', start_date='2025-02-01',

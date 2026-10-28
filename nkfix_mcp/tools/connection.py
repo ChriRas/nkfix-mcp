@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from nkfix_mcp.client import NkfClient, NkfError
@@ -45,6 +46,16 @@ async def fetch_scope(nkf: NkfClient) -> Scope | None:
     return 'erfassen'
 
 
+async def _version(nkf: NkfClient) -> str | None:
+    """The instance version; None if the instance does not say (it is only for information)."""
+    try:
+        about = await nkf.get('/api/ueber')
+    except NkfError:
+        return None
+    version = about.get('version') if isinstance(about, dict) else None
+    return version if isinstance(version, str) else None
+
+
 def register(server: MCPServer, nkf: NkfClient) -> None:
     config = nkf.config
 
@@ -54,10 +65,10 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         """Prüft die Verbindung zu NebenkostenFix: angemeldetes Konto, Zugriffsschlüssel und dessen
         Umfang (lesen oder erfassen), Version der Instanz und Warnungen. Liest nur."""
         me = await nkf.get('/api/auth/me')
-        try:
-            version = (await nkf.get('/api/ueber')).get('version')
-        except NkfError:
-            version = None
+        if not isinstance(me, dict):
+            raise ToolError('NebenkostenFix hat auf /api/auth/me keine gültige Antwort geliefert (kein JSON-Objekt). '
+                            'Prüf, ob NKF_URL auf eine NebenkostenFix-Instanz zeigt.')
+        version = await _version(nkf)
 
         open_mode = bool(me.get('ohne_anmeldung'))
         api_key = me.get('schluessel') if not open_mode else None
