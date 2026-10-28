@@ -49,7 +49,20 @@ async def test_checks_work_with_read_key_and_change_nothing(instance):
             own_shares=125,
             total_shares=1000,
         )
-        assert hausgeld['line_items'][0]['umlagefaehig'] is True
-        assert hausgeld['line_items'][1]['umlagefaehig'] is False
+        assert hausgeld['line_items'][0]['allocable'] is True
+        assert hausgeld['line_items'][1]['allocable'] is False
+        # Every field is mapped from a real key: a renamed key upstream would leave it None.
+        janitor = hausgeld['line_items'][0]
+        assert None not in (
+            janitor['total_amount'],
+            janitor['own_amount'],
+            janitor['reason'],
+            janitor['expected_own_amount'],
+            janitor['deviation'],
+            janitor['matches'],
+        )
+        assert janitor['betrkv_number'] == 14
+        assert (hausgeld['allocable_count'], hausgeld['owner_count'], hausgeld['undecided_count']) == (1, 1, 0)
+        assert (hausgeld['allocable_total'], hausgeld['owner_total']) == ('300.00', '1000.00')
         assert hausgeld['notes']
     assert await sample_data(instance) == previous

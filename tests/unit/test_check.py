@@ -168,11 +168,59 @@ async def test_check_hausgeld():
         'eigener_anteil': 125.0,
         'gesamtanteile': 1000.0,
     }
+    assert result.structured_content == {
+        'line_items': [
+            {
+                'name': 'Hausmeister',
+                'total_amount': '2400.00',
+                'own_amount': '300.00',
+                'allocable': True,
+                'betrkv_number': 14,
+                'reason': '§ 2 Nr. 14 BetrKV',
+                'expected_own_amount': '300.00',
+                'deviation': '0.00',
+                'matches': True,
+                'note': None,
+            }
+        ],
+        'allocable_total': '300.00',
+        'owner_total': '0.00',
+        'undecided_total': '0.00',
+        'allocable_count': 1,
+        'owner_count': 0,
+        'undecided_count': 0,
+        'sum_check': None,
+        'notes': ['Abrechnungszeitraum beachten', 'Heizkosten gesondert'],
+    }
+
+
+async def test_check_hausgeld_maps_the_sum_check():
+    fake = FakeNkf().json(
+        'POST',
+        '/api/hausgeld/pruefen',
+        {
+            'positionen': [],
+            'summenprobe': {
+                'erwartet': '1300',
+                'angesetzt': '1250.5',
+                'abweichung': '49.5',
+                'stimmt': False,
+                'hinweis': 'Erwartet waren 1.300,00 €',
+            },
+        },
+    )
+    result = await call(
+        fake, 'check_hausgeld', line_items=[], own_shares=125, total_shares=1000, statement_total='1300.00'
+    )
     data = result.structured_content
-    assert data['summe_umlagefaehig'] == '300.00'
-    assert data['summe_eigentuemer'] == '0.00'
-    assert data['line_items'][0]['umlagefaehig'] is True
-    assert data['notes'] == ['Abrechnungszeitraum beachten', 'Heizkosten gesondert']
+    assert data['sum_check'] == {
+        'statement_total': '1300.00',
+        'counted_total': '1250.50',
+        'deviation': '49.50',
+        'matches': False,
+        'note': 'Erwartet waren 1.300,00 €',
+    }
+    assert data['notes'] == []
 
 
 async def test_end_in_the_future_is_reported_as_checked_until_today():

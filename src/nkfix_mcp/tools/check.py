@@ -60,6 +60,87 @@ class HausgeldLineItem(BaseModel):
     own_amount: str = Field(description='Anteil der eigenen Wohnung laut Abrechnung, z. B. "300.00"')
 
 
+class HausgeldResult(BaseModel):
+    """One line item as NebenkostenFix classified and recalculated it."""
+
+    name: str
+    total_amount: str | None
+    own_amount: str | None = Field(description='eigener Betrag laut Abrechnung')
+    allocable: bool | None = Field(
+        description='true: auf den Mieter umlagefähig (BetrKV), false: trägt der Eigentümer, null: steht in keiner '
+        'Nummer der BetrKV, umlagefähig nur, wenn der Mietvertrag sie nennt'
+    )
+    betrkv_number: int | None = Field(description='Nummer in § 2 BetrKV')
+    reason: str | None = Field(description='Begründung der Einordnung')
+    expected_own_amount: str | None = Field(description='eigener Betrag, nachgerechnet aus den Anteilen')
+    deviation: str | None = Field(description='Betrag der Abweichung zwischen own_amount und expected_own_amount')
+    matches: bool | None = Field(description='true: own_amount stimmt (bis auf Rundung)')
+    note: str | None
+
+
+class HausgeldSumCheck(BaseModel):
+    statement_total: str | None = Field(description='Endsumme laut Einzelabrechnung (statement_total)')
+    counted_total: str | None = Field(description='Summe der eigenen Beträge aller Positionen')
+    deviation: str | None
+    matches: bool | None = Field(description='false: vermutlich fehlt eine Position oder ist doppelt')
+    note: str | None
+
+
+class HausgeldCheck(BaseModel):
+    line_items: list[HausgeldResult]
+    allocable_total: str | None = Field(description='Summe der umlagefähigen eigenen Beträge')
+    owner_total: str | None = Field(description='Summe dessen, was der Eigentümer trägt')
+    undecided_total: str | None = Field(description='Summe der Positionen mit allocable=null')
+    allocable_count: int | None
+    owner_count: int | None
+    undecided_count: int | None
+    sum_check: HausgeldSumCheck | None = Field(description='nur mit statement_total')
+    notes: list[str] = Field(description='Hinweise zum Abrechnungszeitraum und zu den Heizkosten')
+
+
+def _hausgeld_result(raw: dict[str, Any]) -> HausgeldResult:
+    return HausgeldResult(
+        name=raw['name'],
+        total_amount=format_money(raw.get('gesamtbetrag')),
+        own_amount=format_money(raw.get('eigener_betrag')),
+        allocable=raw.get('umlagefaehig'),
+        betrkv_number=raw.get('betrkv_nr'),
+        reason=raw.get('begruendung'),
+        expected_own_amount=format_money(raw.get('erwartet')),
+        deviation=format_money(raw.get('abweichung')),
+        matches=raw.get('stimmt'),
+        note=raw.get('hinweis'),
+    )
+
+
+def _hausgeld_sum_check(raw: dict[str, Any] | None) -> HausgeldSumCheck | None:
+    # Upstream compares the stated total ("erwartet") with the counted one ("angesetzt").
+    if not raw:
+        return None
+    return HausgeldSumCheck(
+        statement_total=format_money(raw.get('erwartet')),
+        counted_total=format_money(raw.get('angesetzt')),
+        deviation=format_money(raw.get('abweichung')),
+        matches=raw.get('stimmt'),
+        note=raw.get('hinweis'),
+    )
+
+
+def _hausgeld_check(raw: dict[str, Any]) -> HausgeldCheck:
+    # Upstream returns amounts as str(Decimal): "300", "0", "125.0625"; format_money makes them uniform.
+    return HausgeldCheck(
+        line_items=[_hausgeld_result(p) for p in raw.get('positionen') or []],
+        allocable_total=format_money(raw.get('summe_umlagefaehig')),
+        owner_total=format_money(raw.get('summe_eigentuemer')),
+        undecided_total=format_money(raw.get('summe_offen')),
+        allocable_count=raw.get('anzahl_umlagefaehig'),
+        owner_count=raw.get('anzahl_eigentuemer'),
+        undecided_count=raw.get('anzahl_offen'),
+        sum_check=_hausgeld_sum_check(raw.get('summenprobe')),
+        notes=[raw[h] for h in ('zeitraum_hinweis', 'heizkosten_hinweis') if raw.get(h)],
+    )
+
+
 def register(server: MCPServer, nkf: NkfClient) -> None:
     @tool(server, 'Abrechnung vorprüfen', READ_ONLY)
     @report_errors
@@ -138,7 +219,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         statement_total: Annotated[
             str | None, Field(description='Endsumme der Einzelabrechnung für die Summenprobe')
         ] = None,
-    ) -> dict[str, Any]:
+    ) -> HausgeldCheck:
         """Prüft eine Hausgeld-Einzelabrechnung einer Eigentumswohnung: welche Positionen auf den Mieter
         umlagefähig sind (BetrKV), ob der eigene Anteil richtig berechnet ist und ob die Summe stimmt.
         Speichert nichts."""
@@ -151,21 +232,4 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         }
         if statement_total is not None:
             payload['abrechnungssumme'] = statement_total
-        raw = await nkf.post('/api/hausgeld/pruefen', payload)
-        # Upstream returns str(Decimal): "300", "0", "125.0625". Made uniform here.
-        probe = raw.get('summenprobe')
-        return {
-            'line_items': [
-                {
-                    **p,
-                    **{k: format_money(p.get(k)) for k in ('gesamtbetrag', 'eigener_betrag', 'erwartet', 'abweichung')},
-                }
-                for p in raw.get('positionen') or []
-            ],
-            **{k: format_money(raw.get(k)) for k in ('summe_umlagefaehig', 'summe_eigentuemer', 'summe_offen')},
-            **{k: raw.get(k) for k in ('anzahl_umlagefaehig', 'anzahl_eigentuemer', 'anzahl_offen')},
-            'sum_check': None
-            if not probe
-            else {**probe, **{k: format_money(probe.get(k)) for k in ('erwartet', 'angesetzt', 'abweichung')}},
-            'notes': [raw[h] for h in ('zeitraum_hinweis', 'heizkosten_hinweis') if raw.get(h)],
-        }
+        return _hausgeld_check(await nkf.post('/api/hausgeld/pruefen', payload))
