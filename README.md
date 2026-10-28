@@ -112,8 +112,27 @@ Danach in Claude Code `/mcp` aufrufen. Der Server sollte als verbunden erscheine
 Claude Code zeigt die Werkzeuge mit deutschem Titel an, z. B. „Rechnung erfassen“ statt `record_invoice`.
 
 Werkzeuge ohne Nachfrage erlaubst du über `/permissions` mit der Regel `mcp__nkfix__*`. Die
-Erfassen-Werkzeuge fragen trotzdem jedes Mal nach, laut Doku von Claude Code sogar in den Modi `auto` und
-`bypassPermissions` (siehe oben).
+Erfassen-Werkzeuge fragen trotzdem jedes Mal nach. Im Auto-Modus entfällt diese Freigabe (getestet mit
+Claude Code 2.1.312); die Rückfrage bei Bedenken kommt auch dort.
+
+### Prompts und Resources in Claude Code
+
+Drei fertige Abläufe startest du als Befehl. Argumente stehen durch Leerzeichen getrennt dahinter, jedes ist
+ein einzelnes Wort. Fehlt eins, fragt der Assistent nach.
+
+| Befehl | Was er tut |
+|---|---|
+| `/nkfix:prepare_year_end 1 2025` | Jahresabschluss vorbereiten: geht Rechnungen, Zählerstände, Vorprüfung je Mieter und Fristen durch und sagt, was fehlt und was auffällt. Ändert nichts. |
+| `/nkfix:check_hausgeld_statement` | Prüft eine angehängte Hausgeld-Einzelabrechnung der WEG und fragt danach, was erfasst werden soll. |
+| `/nkfix:record_receipt ~/Belege/wasser-2025.pdf` | Liest einen Beleg, prüft auf Dubletten und erfasst die Rechnung nach deiner Zustimmung. Nur mit einem Schlüssel, der erfassen darf. |
+
+Daten hängst du mit `@` an deine Nachricht:
+
+- `@nkfix:nkfix://overview`: Immobilien mit ihren Mietern (samt IDs), offene Abrechnungen und die Fristen
+  der nächsten 90 Tage
+- `@nkfix:nkfix://deadlines`: alle anstehenden Fristen
+
+Beides wird bei jedem Anhängen frisch aus NebenkostenFix gelesen.
 
 ## Einrichten in Claude Desktop
 
