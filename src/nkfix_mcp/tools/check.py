@@ -15,10 +15,7 @@ from pydantic import BaseModel, Field
 
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.formatting import format_money
-from nkfix_mcp.tools import READ_ONLY, IsoDate, report_errors, tool
-from nkfix_mcp.tools.read import TenantId
-
-MeterId = Annotated[int, Field(description='ID des Zählers, siehe Werkzeug list_meters')]
+from nkfix_mcp.tools import READ_ONLY, IsoDate, MeterId, TenantId, report_errors, tool
 
 
 class Check(BaseModel):

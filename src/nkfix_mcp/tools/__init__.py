@@ -1,11 +1,20 @@
-"""The server's tools, split by effect: read, check, record."""
+"""The server's tools and what they share.
+
+Read tools sit in one module per domain (properties, tenants, invoices,
+meters, statements); ``check``, ``record`` and ``connection`` are split by
+effect. Every read tool translates the UI-shaped fields of the API (a mix
+of English and German) into fields of its own, in English. If upstream
+renames a field, the contract tests fail at exactly that spot. The API
+barely filters (``/api/invoices`` returns all invoices); the filtering
+happens here.
+"""
 
 from __future__ import annotations
 
 import functools
 from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Annotated, Any, ParamSpec, TypeVar
+from typing import Annotated, Any, Literal, ParamSpec, TypeVar
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -17,6 +26,14 @@ from nkfix_mcp.receipts import ReceiptError
 
 P = ParamSpec('P')
 R = TypeVar('R')
+
+MAX_ITEMS = 100
+
+PaymentType = Literal['Miete', 'Nebenkostenvorauszahlung', 'Kaution', 'Nebenkostenzahlung']
+
+PropertyId = Annotated[int, Field(description='ID der Immobilie, siehe Werkzeug list_properties')]
+TenantId = Annotated[int, Field(description='ID des Mieters, siehe Werkzeug list_tenants')]
+MeterId = Annotated[int, Field(description='ID des Zählers, siehe Werkzeug list_meters')]
 
 # Hints for the client. Claude Code lets read tools run in parallel with
 # them; they do not replace a permission prompt.

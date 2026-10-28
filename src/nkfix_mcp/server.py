@@ -18,7 +18,7 @@ from mcp.server.mcpserver import MCPServer
 from nkfix_mcp import __version__
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.config import Config, ConfigError
-from nkfix_mcp.tools import check, connection, read, record
+from nkfix_mcp.tools import check, connection, invoices, meters, properties, record, statements, tenants
 from nkfix_mcp.tools.connection import Scope, fetch_scope
 
 __all__ = ['build_server', 'fetch_scope', 'main']
@@ -65,7 +65,8 @@ def build_server(nkf: NkfClient, scope: Scope | None = None, lifespan: Lifespan 
     instructions = INSTRUCTIONS + (RECORD_INSTRUCTIONS if may_record else '')
     server = MCPServer('nkfix', instructions=instructions, version=__version__, lifespan=lifespan)
     connection.register(server, nkf)
-    read.register(server, nkf)
+    for domain in (properties, tenants, invoices, meters, statements):
+        domain.register(server, nkf)
     check.register(server, nkf)
     if may_record:
         record.register(server, nkf, require_interaction=nkf.config.prompt_on_record)
