@@ -14,7 +14,7 @@ def test_format_money_is_a_string_with_two_decimal_places(raw, expected):
 
 
 def test_unusable_amount_is_not_swallowed():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='Kein Geldbetrag'):
         format_money('zwölf')
 
 

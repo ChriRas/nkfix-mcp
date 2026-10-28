@@ -133,7 +133,8 @@ async def test_me_answer_without_object_gives_a_clear_message(me):
     fake = FakeNkf().json('GET', '/api/auth/me', me).json('GET', '/api/ueber', ABOUT)
     result = await call(fake, 'check_connection')
     assert result.is_error
-    assert 'keine gültige Antwort' in result.content[0].text and '/api/auth/me' in result.content[0].text
+    assert 'keine gültige Antwort' in result.content[0].text
+    assert '/api/auth/me' in result.content[0].text
 
 
 @pytest.mark.parametrize('about', [None, [], 'ok'])

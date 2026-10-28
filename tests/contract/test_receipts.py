@@ -30,7 +30,8 @@ async def test_invoice_with_receipt_and_invoice_document(instance, tmp_path):
 
         document = await call(mcp, 'upload_invoice_document', property_id=house,
                               receipt_path='stadtwerke-fantasie.pdf', description='Fantasie-Jahresrechnung')
-        assert document['saved'] is True and document['id']
+        assert document['saved'] is True
+        assert document['id']
         for month, amount in (('02', '10.00'), ('03', '11.00')):
             part = await call(mcp, 'record_invoice', property_id=house, cost_category_id=cost_category['id'],
                               amount=amount, start_date=f'{YEAR}-{month}-01', end_date=f'{YEAR}-{month}-28',

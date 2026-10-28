@@ -59,6 +59,7 @@ HeatingCostType = Literal['brennstoff', 'betriebsstrom', 'bedienung', 'pruefung'
 
 
 Section35aCategory = Literal['haushaltsnah', 'handwerker']
+MAX_DECIMALS = 2
 AMBIGUOUS_AMOUNT = ('Der Betrag {value!r} hat mehr als zwei Nachkommastellen und ist mehrdeutig (ist „1.500“ 1500 € '
                     'oder 1,50 €?). Gib ihn eindeutig an, z. B. "1500.00" oder "1500,00".')
 
@@ -71,7 +72,8 @@ def _parse_amount(value: Any) -> Decimal:
     decimal number it would be 1.50 €, and nobody would notice.
     """
     if isinstance(value, bool) or not isinstance(value, str | int | float | Decimal):
-        raise ValueError(f'Kein Betrag: {value!r}')
+        # ValueError, not TypeError: pydantic turns only ValueError into a validation message.
+        raise ValueError(f'Kein Betrag: {value!r}')  # noqa: TRY004
     text = str(value).strip().replace(' ', '').replace('€', '')
     if ',' in text:
         text = text.replace('.', '').replace(',', '.')
@@ -79,7 +81,7 @@ def _parse_amount(value: Any) -> Decimal:
         number = Decimal(text)
     except InvalidOperation as error:
         raise ValueError(f'Kein Betrag: {value!r}') from error
-    if not number.is_finite() or number.as_tuple().exponent < -2:
+    if not number.is_finite() or number.as_tuple().exponent < -MAX_DECIMALS:
         raise ValueError(AMBIGUOUS_AMOUNT.format(value=value))
     return number.quantize(CENT)
 

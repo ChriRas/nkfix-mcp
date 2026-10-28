@@ -13,6 +13,7 @@ another site (CSRF) and answers 403.
 from __future__ import annotations
 
 import logging
+from http import HTTPStatus
 from typing import Any
 
 import httpx2
@@ -22,7 +23,7 @@ from nkfix_mcp.auth import auth_for
 from nkfix_mcp.config import Config
 from nkfix_mcp.errors import NkfConfirmationRequired, NkfError
 
-__all__ = ['NkfClient', 'NkfError', 'NkfConfirmationRequired']
+__all__ = ['NkfClient', 'NkfConfirmationRequired', 'NkfError']
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class NkfClient:
                 raise NkfError(f'Unter {self.config.url} antwortet keine NebenkostenFix-API '
                                f'(kein JSON auf {path}). Stimmt NKF_URL?') from cause
         data = errors.body(response)
-        if response.status_code == 409 and data.get('nachfrage'):
+        if response.status_code == HTTPStatus.CONFLICT and data.get('nachfrage'):
             raise NkfConfirmationRequired(data)
         error = errors.from_response(response, auth_method)
         if error.code in ('nicht_per_schluessel', 'fremder_ursprung'):
@@ -110,4 +111,4 @@ class NkfClient:
 
 
 def _session_expired(response: httpx2.Response) -> bool:
-    return response.status_code == 401 and errors.body(response).get('code') == 'auth_required'
+    return response.status_code == HTTPStatus.UNAUTHORIZED and errors.body(response).get('code') == 'auth_required'

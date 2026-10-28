@@ -12,6 +12,8 @@ Three adapters with the same interface:
 
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import anyio
 import httpx2
 
@@ -87,20 +89,22 @@ class SessionAuth(OpenAccess):
         if self._rejected:
             raise self._rejected
         response = await http.post('/login', json={'username': self._username, 'password': self._password})
-        if response.status_code == 200:
+        if response.status_code == HTTPStatus.OK:
             self._logged_in = True
             self.generation += 1
             return
-        if response.status_code == 409:
+        if response.status_code == HTTPStatus.CONFLICT:
             error = errors.NkfError(
-                'Diese NebenkostenFix-Instanz läuft ohne Anmeldung. Lass NKF_USERNAME und NKF_PASSWORD weg.', 409)
-        elif response.status_code == 401:
+                'Diese NebenkostenFix-Instanz läuft ohne Anmeldung. Lass NKF_USERNAME und NKF_PASSWORD weg.',
+                HTTPStatus.CONFLICT)
+        elif response.status_code == HTTPStatus.UNAUTHORIZED:
             # /login answers without ``code``, unlike the API routes.
             error = errors.NkfError(
-                'NebenkostenFix hat die Anmeldung abgelehnt. Prüfe NKF_USERNAME und NKF_PASSWORD.', 401)
+                'NebenkostenFix hat die Anmeldung abgelehnt. Prüfe NKF_USERNAME und NKF_PASSWORD.',
+                HTTPStatus.UNAUTHORIZED)
         else:
             error = errors.from_response(response, self.auth_method)
-        if response.status_code in (401, 409, 429):
+        if response.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.CONFLICT, HTTPStatus.TOO_MANY_REQUESTS):
             error = errors.NkfError(f'{error} Nach der Korrektur den MCP-Server neu starten.',
                                     error.status, error.code)
             self._rejected = error

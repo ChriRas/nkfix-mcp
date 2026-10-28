@@ -38,7 +38,10 @@ def total(values: Iterable[Any]) -> str:
 
 
 def in_year(start_date: str | None, end_date: str | None, year: int) -> bool:
-    """Does the period ``start_date``–``end_date`` touch the calendar year? An open end runs to today and beyond."""
+    """Does the period from ``start_date`` to ``end_date`` touch the calendar year?
+
+    An open end runs to today and beyond.
+    """
     if not start_date:
         return False
     return start_date <= f'{year}-12-31' and (end_date or '9999-12-31') >= f'{year}-01-01'

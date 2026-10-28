@@ -34,12 +34,13 @@ async def test_read_key_gets_clear_message_when_recording(instance):
 
 async def test_create_payment_find_it_again_and_detect_duplicate(instance):
     async with connected(instance, 'erfassen') as mcp:
-        assert RECORD_TOOLS <= {w.name for w in (await mcp.list_tools()).tools}
+        assert {w.name for w in (await mcp.list_tools()).tools} >= RECORD_TOOLS
         ben = next(m['id'] for m in (await call(mcp, 'list_tenants'))['items'] if m['name'] == 'Ben Beispiel')
         payment = {'tenant_id': ben, 'amount': '711,11', 'payment_date': TODAY.isoformat(), 'payment_type': 'Miete'}
 
         first = await call(mcp, 'record_payment', **payment)
-        assert first['saved'] is True and first['id']
+        assert first['saved'] is True
+        assert first['id']
         found = (await call(mcp, 'list_payments', tenant_id=ben, year=TODAY.year, payment_type='Miete'))['items']
         assert any(z['id'] == first['id'] and z['amount'] == '711.11' for z in found)
 
@@ -49,11 +50,13 @@ async def test_create_payment_find_it_again_and_detect_duplicate(instance):
 
         # The human agrees: with the code from the response it is saved.
         third = await call(mcp, 'record_payment', **payment, approval_code=second['approval_code'])
-        assert third['saved'] is True and third['id'] not in (None, first['id'])
+        assert third['saved'] is True
+        assert third['id'] not in (None, first['id'])
 
         # The same code a second time: the new payment is a new concern.
         fourth = await call(mcp, 'record_payment', **payment, approval_code=second['approval_code'])
-        assert fourth['saved'] is False and 'passt nicht' in fourth['note']
+        assert fourth['saved'] is False
+        assert 'passt nicht' in fourth['note']
 
 
 async def test_settlement_payment_with_statement_settles_it(instance):
@@ -62,19 +65,23 @@ async def test_settlement_payment_with_statement_settles_it(instance):
         anna = next(m['id'] for m in tenants if m['name'] == 'Anna Beispiel')
         ben = next(m['id'] for m in tenants if m['name'] == 'Ben Beispiel')
         statement = (await call(mcp, 'list_statements', tenant_id=anna))['items'][0]
-        assert statement['payment_status'] == 'offen' and statement['outstanding_amount'] not in (None, '0.00')
+        assert statement['payment_status'] == 'offen'
+        assert statement['outstanding_amount'] not in (None, '0.00')
         payment = {'tenant_id': anna, 'amount': statement['outstanding_amount'],
                    'payment_date': TODAY.isoformat(), 'payment_type': 'Nebenkostenzahlung'}
 
         without = await call(mcp, 'record_payment', **payment)
-        assert without['saved'] is False and 'keiner Abrechnung zugeordnet' in without['concerns'][0]
+        assert without['saved'] is False
+        assert 'keiner Abrechnung zugeordnet' in without['concerns'][0]
 
         # Ben has no statement of his own; Anna's is not his.
         foreign = await mcp.call_tool('record_payment', {**payment, 'tenant_id': ben, 'statement_id': statement['id']})
-        assert foreign.is_error and 'gibt es für Mieter' in foreign.content[0].text
+        assert foreign.is_error
+        assert 'gibt es für Mieter' in foreign.content[0].text
 
         linked = await call(mcp, 'record_payment', **payment, statement_id=statement['id'])
-        assert linked['saved'] is True and linked['concerns'] == []
+        assert linked['saved'] is True
+        assert linked['concerns'] == []
         after = (await call(mcp, 'list_statements', tenant_id=anna))['items'][0]
         assert (after['payment_status'], after['outstanding_amount']) == ('beglichen', '0.00')
 
@@ -124,7 +131,8 @@ async def test_create_invoice_find_it_again_and_number_counts_as_duplicate(insta
                    'start_date': f'{TODAY.year}-01-01', 'end_date': f'{TODAY.year}-03-31',
                    'invoice_number': 'VERTRAG-1', 'description': 'Vertragstest'}
         new = await call(mcp, 'record_invoice', **invoice)
-        assert new['saved'] is True and new['id']
+        assert new['saved'] is True
+        assert new['id']
 
         items = (await call(mcp, 'list_invoices', property_id=house, year=TODAY.year,
                             cost_category_id=cost_category['id']))['items']

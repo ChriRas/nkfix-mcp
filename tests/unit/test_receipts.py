@@ -90,8 +90,7 @@ def sample_data() -> FakeNkf:
 async def call(fake, tool, **arguments):
     nkf = client(fake)
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
-        result = await mcp.call_tool(tool, arguments)
-    return result
+        return await mcp.call_tool(tool, arguments)
 
 
 def multipart(request) -> tuple[dict[str, str], dict[str, tuple[str, str, bytes]]]:

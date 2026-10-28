@@ -70,7 +70,7 @@ async def tools(scope, **values):
 @pytest.mark.parametrize(('scope', 'offered'), [('lesen', False), ('erfassen', True), (None, True)])
 async def test_record_tools_exist_only_for_access_that_may_record(scope, offered):
     names = set(await tools(scope))
-    assert (RECORD_TOOLS <= names) is offered
+    assert (names >= RECORD_TOOLS) is offered
     assert not (RECORD_TOOLS & names) if not offered else True
 
 
@@ -100,7 +100,8 @@ async def test_payment_is_created():
     fake = sample_data()
     data = await call(fake, 'record_payment', tenant_id=1, amount='60', payment_date='2025-11-03',
                       payment_type='Nebenkostenvorauszahlung')
-    assert data['saved'] is True and data['id'] == 42
+    assert data['saved'] is True
+    assert data['id'] == 42
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0]) == {
         'tenant_id': 1, 'amount': '60.00', 'type': 'Nebenkostenvorauszahlung', 'payment_date': '2025-11-03'}
 
@@ -192,7 +193,8 @@ SAME_NUMBER = {'property_id': 1, 'cost_category_id': 9, 'amount': '100', 'start_
 async def test_invoice_with_approval_code_is_saved():
     fake = sample_data()
     first = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12')
-    assert first['saved'] is False and any('Nr. WA-2025-17' in b for b in first['concerns'])
+    assert first['saved'] is False
+    assert any('Nr. WA-2025-17' in b for b in first['concerns'])
     data = await call(fake, 'record_invoice', **SAME_NUMBER, base_price='12', approval_code=first['approval_code'])
     assert data['saved'] is True
     assert FakeNkf.body(fake.sent('POST', '/api/invoices')[0])['grundpreis'] == '12.00'
@@ -206,7 +208,8 @@ async def test_approval_code_does_not_apply_to_changed_values_with_the_same_conc
     data = await call(fake, 'record_invoice', **{**SAME_NUMBER, 'base_price': '12', **changed},
                       approval_code=first['approval_code'])
     assert data['concerns'] == first['concerns']
-    assert data['saved'] is False and 'passt nicht' in data['note']
+    assert data['saved'] is False
+    assert 'passt nicht' in data['note']
     assert fake.sent('POST', '/api/invoices') == []
 
 
@@ -273,7 +276,8 @@ def with_statements(*statements: dict) -> FakeNkf:
 async def test_settlement_payment_is_linked_to_its_statement():
     fake = with_statements(STATEMENT, OTHER_TENANTS_STATEMENT)
     data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=3)
-    assert data['saved'] is True and data['concerns'] == []
+    assert data['saved'] is True
+    assert data['concerns'] == []
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0]) == {
         'tenant_id': 1, 'amount': '108.32', 'type': 'Nebenkostenzahlung', 'payment_date': '2026-10-19',
         'billing_report_id': 3}
@@ -318,7 +322,8 @@ async def test_settlement_payment_without_statement_raises_a_concern():
 async def test_settlement_payment_without_statement_is_fine_if_tenant_has_none():
     fake = with_statements(OTHER_TENANTS_STATEMENT)
     data = await call(fake, 'record_payment', **SETTLEMENT)
-    assert data['saved'] is True and data['concerns'] == []
+    assert data['saved'] is True
+    assert data['concerns'] == []
 
 
 @pytest.mark.parametrize(('amount', 'difference'), [('135.00', '26.68 € mehr'), ('100.00', '8.32 € weniger')])
@@ -342,7 +347,8 @@ CREDIT = {**STATEMENT, 'offen_betrag': '-42.10', 'zahlungsstand': 'offen'}
 async def test_credit_payout_of_the_outstanding_credit_raises_no_concern():
     fake = with_statements(CREDIT)
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-42.10'}, statement_id=3)
-    assert data['saved'] is True and data['concerns'] == []
+    assert data['saved'] is True
+    assert data['concerns'] == []
 
 
 async def test_credit_payout_with_wrong_sign_says_payouts_are_negative():
@@ -376,7 +382,8 @@ async def test_statement_without_outstanding_amount_raises_no_amount_concern():
     # Old statements without a version have no payment status.
     fake = with_statements({**STATEMENT, 'offen_betrag': None, 'zahlungsstand': None})
     data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '135.00'}, statement_id=3)
-    assert data['saved'] is True and data['concerns'] == []
+    assert data['saved'] is True
+    assert data['concerns'] == []
 
 
 async def test_approval_code_is_bound_to_the_statement():
@@ -389,7 +396,8 @@ async def test_approval_code_is_bound_to_the_statement():
     assert first['concerns'] == ['Eine Zahlung über 108.32 € (Nebenkostenzahlung) vom 19.10.2026 gibt es schon für '
                                  'diesen Mieter (Zahlung 1).']
     data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=5, approval_code=first['approval_code'])
-    assert data['saved'] is False and 'passt nicht' in data['note']
+    assert data['saved'] is False
+    assert 'passt nicht' in data['note']
     assert fake.sent('POST', '/api/payments') == []
 
 
@@ -401,14 +409,16 @@ async def test_other_payment_types_do_not_load_statements():
 
 async def test_instructions_ask_for_the_statement_of_a_settlement_payment():
     instructions = build_server(client(FakeNkf()), 'erfassen').instructions
-    assert 'statement_id' in instructions and 'list_statements' in instructions
+    assert 'statement_id' in instructions
+    assert 'list_statements' in instructions
     assert 'Guthabenauszahlung negativ' in instructions
 
 
 async def test_payment_type_help_points_to_statement_id():
     record_payment = (await tools('erfassen'))['record_payment']
     payment_type_help = record_payment.input_schema['properties']['payment_type']['description']
-    assert 'statement_id' in payment_type_help and 'Guthabenauszahlung negativ' in payment_type_help
+    assert 'statement_id' in payment_type_help
+    assert 'Guthabenauszahlung negativ' in payment_type_help
     assert 'list_statements' in record_payment.input_schema['properties']['statement_id']['description']
 
 
@@ -485,7 +495,8 @@ async def test_invoice_is_created_with_the_api_fields():
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='98.7',
                       start_date='2025-01-01', end_date='2025-12-31', invoice_number='MUELL-25',
                       invoice_date='2026-01-05', description='Müllabfuhr', provider_id=4)
-    assert data['saved'] is True and data['id'] == 44
+    assert data['saved'] is True
+    assert data['id'] == 44
     assert FakeNkf.body(fake.sent('POST', '/api/invoices')[0]) == {
         'property_id': 1, 'category_id': 3, 'amount': '98.70', 'start_date': '2025-01-01', 'end_date': '2025-12-31',
         'invoice_number': 'MUELL-25', 'rechnungsdatum': '2026-01-05', 'description': 'Müllabfuhr',
@@ -523,9 +534,8 @@ async def test_end_date_before_start_date_is_rejected_before_sending():
     assert fake.sent('POST', '/api/invoices') == []
 
 
-ALLOWED_RECORD_ENDPOINTS = ALLOWED_READ_ENDPOINTS + [
-    r'POST /api/invoices', r'POST /api/invoice_documents', r'POST /api/readings', r'POST /api/payments',
-]
+ALLOWED_RECORD_ENDPOINTS = [*ALLOWED_READ_ENDPOINTS, r'POST /api/invoices', r'POST /api/invoice_documents',
+                            r'POST /api/readings', r'POST /api/payments']
 
 
 async def test_record_guard_calls_only_allowed_endpoints(tmp_path):
@@ -564,7 +574,8 @@ async def test_invoice_response_without_id_does_not_crash():
     fake = sample_data().set_route('POST', '/api/invoices', json_response(201, {}))
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='5', start_date='2025-02-01',
                       end_date='2025-02-28')
-    assert data['saved'] is True and data['id'] is None
+    assert data['saved'] is True
+    assert data['id'] is None
 
 
 @pytest.mark.parametrize(('raw', 'expected'), [
@@ -607,7 +618,8 @@ async def test_unexpected_confirmation_request_from_instance_does_not_loop():
     data = await call(fake, 'record_meter_reading', meter_id=5, reading_date='2025-12-31', value=131.5)
     assert data['saved'] is False
     assert 'selbst eintragen' in data['note']
-    assert data['approval_code'] is None and 'approval_code' not in data['note']
+    assert data['approval_code'] is None
+    assert 'approval_code' not in data['note']
 
 
 async def test_labor_cost_requires_section_35a_category():
@@ -617,11 +629,13 @@ async def test_labor_cost_requires_section_35a_category():
         result = await mcp.call_tool('record_invoice', {
             'property_id': 1, 'cost_category_id': 3, 'amount': '300', 'start_date': '2025-01-01',
             'end_date': '2025-12-31', 'labor_cost': '120'})
-    assert result.is_error and '35a' in result.content[0].text
+    assert result.is_error
+    assert '35a' in result.content[0].text
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='300', start_date='2025-01-01',
                       end_date='2025-12-31', labor_cost='120', section_35a_category='haushaltsnah')
     body = FakeNkf.body(fake.sent('POST', '/api/invoices')[0])
-    assert data['saved'] and (body['art_35a'], body['lohnanteil']) == ('haushaltsnah', '120.00')
+    assert data['saved']
+    assert (body['art_35a'], body['lohnanteil']) == ('haushaltsnah', '120.00')
 
 
 async def test_same_invoice_for_another_apartment_is_not_a_duplicate():
@@ -659,7 +673,8 @@ async def test_invoice_document_and_apartment_must_belong_to_the_property(field,
         result = await mcp.call_tool('record_invoice', {
             'property_id': 1, 'cost_category_id': 3, 'amount': '5', 'start_date': '2025-01-01',
             'end_date': '2025-01-31', field: value})
-    assert result.is_error and message in result.content[0].text
+    assert result.is_error
+    assert message in result.content[0].text
 
 
 async def test_the_question_lists_the_new_values():
@@ -681,7 +696,8 @@ async def test_timeout_while_saving_says_the_outcome_is_unclear():
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
         result = await mcp.call_tool('record_payment', {'tenant_id': 1, 'amount': '5', 'payment_date': '2025-12-01',
                                                         'payment_type': 'Miete'})
-    assert result.is_error and 'unklar' in result.content[0].text
+    assert result.is_error
+    assert 'unklar' in result.content[0].text
 
 
 @pytest.mark.parametrize(('tool', 'arguments'), [
@@ -726,4 +742,5 @@ async def test_missing_invoice_document_in_the_precheck_reaches_the_model_with_t
     async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
         result = await mcp.call_tool('upload_invoice_document', {'property_id': 1,
                                                                  'receipt_path': str(tmp_path / 'fehlt.pdf')})
-    assert result.is_error and 'Beleg nicht gefunden' in result.content[0].text
+    assert result.is_error
+    assert 'Beleg nicht gefunden' in result.content[0].text

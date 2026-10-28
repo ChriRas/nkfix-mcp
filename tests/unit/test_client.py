@@ -51,7 +51,8 @@ async def fail_on(response: httpx2.Response, **values) -> NkfError:
 async def test_invalid_api_key_is_not_retried_and_names_the_way_out():
     error = await fail_on(json_response(401, {'error': 'x', 'code': 'schluessel_ungueltig'}))
     assert error.requests == 1
-    assert 'neuen' in str(error) and 'Einstellungen' in str(error)
+    assert 'neuen' in str(error)
+    assert 'Einstellungen' in str(error)
     assert API_KEY not in str(error)
 
 

@@ -279,7 +279,8 @@ async def test_cost_categories_providers_invoice_documents_heating_systems():
     assert receipts == [{'id': 3, 'property_id': 1, 'filename': 'sammel.pdf', 'description': 'Jahresrechnung',
                          'uploaded_at': '2026-01-12'}]
     heating_system = (await call(fake, 'list_heating_systems', property_id=1))['items'][0]
-    assert heating_system['name'] == 'Gastherme' and heating_system['supplies'] == 'heizung_warmwasser'
+    assert heating_system['name'] == 'Gastherme'
+    assert heating_system['supplies'] == 'heizung_warmwasser'
 
 
 async def test_data_quality():

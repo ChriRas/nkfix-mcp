@@ -113,13 +113,15 @@ async def test_every_read_tool_runs_with_read_key(instance):
         assert (await call(mcp, 'list_deadlines'))['count'] > 0
         assert (await call(mcp, 'get_data_quality', property_id=house_id))['meters']
         year = await call(mcp, 'get_billing_year_status', property_id=house_id, year=2025)
-        assert year['cost_categories'] and year['tenants']
+        assert year['cost_categories']
+        assert year['tenants']
         await call(mcp, 'list_billing_suggestions')
 
         statements = (await call(mcp, 'list_statements', tenant_id=anna))['items']
         assert statements, 'für Anna legt die Beispielimmobilie die Vorjahresabrechnung an'
         details = await call(mcp, 'get_statement', statement_id=statements[0]['id'])
-        assert details['line_items'] and details['balance'] is not None
+        assert details['line_items']
+        assert details['balance'] is not None
 
 
 async def test_field_guard_check_tools(instance):
