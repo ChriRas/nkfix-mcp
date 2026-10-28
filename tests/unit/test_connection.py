@@ -32,7 +32,7 @@ async def test_connection_reports_account_api_key_and_version():
     assert not result.is_error
     data = result.structured_content
     assert data['account'] == 'testvermieter'
-    assert data['auth_method'] == 'schluessel'
+    assert data['auth_method'] == 'api_key'
     assert data['api_key'] == {'name': 'Assistent', 'scope': 'erfassen'}
     assert data['version'] == '0.17.1'
     assert data['can_record'] is True
@@ -49,7 +49,7 @@ async def test_read_key_says_that_recording_is_not_possible():
 async def test_open_mode_on_remote_address_warns_clearly():
     fake = FakeNkf().json('GET', '/api/auth/me', ME_OPEN).json('GET', '/api/ueber', ABOUT)
     data = (await call(fake, 'check_connection', NKF_API_KEY=None)).structured_content
-    assert data['auth_method'] == 'offen'
+    assert data['auth_method'] == 'open'
     assert any('ohne Anmeldung' in w and 'jeder' in w for w in data['warnings'])
 
 

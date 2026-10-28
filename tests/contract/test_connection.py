@@ -19,7 +19,7 @@ pytestmark = pytest.mark.anyio
 async def test_connection_with_api_key(instance, access, scope):
     async with connected(instance, access) as mcp:
         data = await call(mcp, 'check_connection')
-    assert data['auth_method'] == 'schluessel'
+    assert data['auth_method'] == 'api_key'
     assert data['account'] == 'testvermieter'
     assert data['api_key'] == {'name': f'Vertrag {access}', 'scope': scope}
     assert data['version']
@@ -29,7 +29,7 @@ async def test_connection_with_api_key(instance, access, scope):
 async def test_connection_with_session(instance):
     async with connected(instance, 'sitzung') as mcp:
         data = await call(mcp, 'check_connection')
-    assert data['auth_method'] == 'sitzung'
+    assert data['auth_method'] == 'session'
     assert data['api_key'] is None
     assert data['can_record'] is True
 

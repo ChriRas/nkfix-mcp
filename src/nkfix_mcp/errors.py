@@ -13,6 +13,8 @@ from typing import Any
 
 import httpx2
 
+from nkfix_mcp.config import AuthMethod
+
 
 class NkfError(Exception):
     """A request to NebenkostenFix failed; ``str()`` is meant for the model."""
@@ -39,7 +41,7 @@ def body(response: httpx2.Response) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _unauthorized_message(response: httpx2.Response, code: Any, auth_method: str) -> str:
+def _unauthorized_message(response: httpx2.Response, code: Any, auth_method: AuthMethod) -> str:
     """Why HTTP 401 came back, and what helps."""
     if code == 'schluessel_ungueltig':
         return (
@@ -54,19 +56,19 @@ def _unauthorized_message(response: httpx2.Response, code: Any, auth_method: str
             f'Unter {response.request.url.scheme}://{response.request.url.host} verlangt etwas eine '
             'Anmeldung (HTTP 401), aber nicht NebenkostenFix selbst. Steht ein Proxy davor?'
         )
-    if auth_method == 'schluessel':
+    if auth_method == 'api_key':
         # A bearer without effect: the instance does not support API keys and
         # asks for the session (upstream without PR #48).
         return (
             'Diese NebenkostenFix-Instanz unterstützt keine Zugriffsschlüssel (Version zu alt). '
             'Nutze stattdessen NKF_USERNAME und NKF_PASSWORD.'
         )
-    if auth_method == 'sitzung':
+    if auth_method == 'session':
         return 'NebenkostenFix hat die Anmeldung abgelehnt. Prüfe NKF_USERNAME und NKF_PASSWORD.'
     return 'NebenkostenFix verlangt eine Anmeldung. Setze NKF_API_KEY (oder NKF_USERNAME und NKF_PASSWORD).'
 
 
-def from_response(response: httpx2.Response, auth_method: str) -> NkfError:
+def from_response(response: httpx2.Response, auth_method: AuthMethod) -> NkfError:
     data = body(response)
     status, code = response.status_code, data.get('code')
     # check_plausibility reports errors as {status, message} instead of {error}.

@@ -22,7 +22,7 @@ KEY_PREFIX = 'nkf_'
 _UNRESOLVED = re.compile(r'\$\{[^}]*\}')
 _YES = frozenset({'1', 'ja', 'true', 'yes', 'on'})
 
-AuthMethod = Literal['schluessel', 'sitzung', 'offen']
+AuthMethod = Literal['api_key', 'session', 'open']
 
 
 class ConfigError(Exception):
@@ -100,10 +100,10 @@ class Config:
     @property
     def auth_method(self) -> AuthMethod:
         if self.api_key:
-            return 'schluessel'
+            return 'api_key'
         if self.username:
-            return 'sitzung'
-        return 'offen'
+            return 'session'
+        return 'open'
 
     @property
     def is_local(self) -> bool:

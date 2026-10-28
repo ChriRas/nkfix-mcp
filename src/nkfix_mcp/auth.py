@@ -22,7 +22,7 @@ from nkfix_mcp.config import AuthMethod, Config
 
 
 class OpenAccess:
-    auth_method: AuthMethod = 'offen'
+    auth_method: AuthMethod = 'open'
     # Counts the logins. Whoever notes the value before a request can tell
     # after a 401 whether someone else has already logged in again meanwhile.
     generation = 0
@@ -39,7 +39,7 @@ class OpenAccess:
 
 
 class ApiKeyAuth(OpenAccess):
-    auth_method: AuthMethod = 'schluessel'
+    auth_method: AuthMethod = 'api_key'
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -52,7 +52,7 @@ class ApiKeyAuth(OpenAccess):
 
 
 class SessionAuth(OpenAccess):
-    auth_method: AuthMethod = 'sitzung'
+    auth_method: AuthMethod = 'session'
 
     def __init__(self, username: str, password: str) -> None:
         self._username = username

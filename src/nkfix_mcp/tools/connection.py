@@ -9,6 +9,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from nkfix_mcp.client import NkfClient, NkfError
+from nkfix_mcp.config import AuthMethod
 from nkfix_mcp.tools import READ_ONLY, report_errors, tool
 
 Scope = Literal['lesen', 'erfassen']
@@ -21,7 +22,7 @@ class ApiKeyInfo(BaseModel):
 
 class Connection(BaseModel):
     url: str
-    auth_method: Literal['schluessel', 'sitzung', 'offen']
+    auth_method: AuthMethod
     account: str | None
     api_key: ApiKeyInfo | None
     version: str | None
@@ -87,7 +88,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
                     'erreichbar: jeder, der diese Adresse erreicht, kann alle Daten lesen und '
                     'ändern. Richte in NebenkostenFix ein Konto ein.'
                 )
-            if config.auth_method != 'offen':
+            if config.auth_method != 'open':
                 warnings.append(
                     'Die Instanz ist im offenen Modus; NKF_API_KEY bzw. NKF_USERNAME werden nicht gebraucht.'
                 )
@@ -106,7 +107,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
 
         return Connection(
             url=config.url,
-            auth_method='offen' if open_mode else config.auth_method,
+            auth_method='open' if open_mode else config.auth_method,
             account=me.get('username'),
             api_key=(
                 ApiKeyInfo.model_validate({'name': api_key.get('name'), 'scope': api_key.get('umfang')})

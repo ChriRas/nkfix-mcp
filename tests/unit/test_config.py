@@ -45,19 +45,19 @@ def test_username_without_password_is_an_error():
 
 def test_api_key_wins_over_username_and_password():
     config = read(NKF_URL='http://x', NKF_API_KEY=API_KEY, NKF_USERNAME='anna', NKF_PASSWORD='pw-1234567890')
-    assert config.auth_method == 'schluessel'
+    assert config.auth_method == 'api_key'
 
 
 def test_username_and_password_give_a_session():
-    assert read(NKF_URL='http://x', NKF_USERNAME='anna', NKF_PASSWORD='pw-1234567890').auth_method == 'sitzung'
+    assert read(NKF_URL='http://x', NKF_USERNAME='anna', NKF_PASSWORD='pw-1234567890').auth_method == 'session'
 
 
 def test_without_credentials_access_is_open():
-    assert read(NKF_URL='http://x').auth_method == 'offen'
+    assert read(NKF_URL='http://x').auth_method == 'open'
 
 
 def test_empty_values_count_as_not_set():
-    assert read(NKF_URL='http://x', NKF_API_KEY='  ', NKF_USERNAME='').auth_method == 'offen'
+    assert read(NKF_URL='http://x', NKF_API_KEY='  ', NKF_USERNAME='').auth_method == 'open'
 
 
 def test_secrets_are_not_in_the_representation():
