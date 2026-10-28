@@ -40,7 +40,8 @@ vorigen oder eine Rechnung mit derselben Nummer, legt der Server nichts an, sond
   mit einem Freigabecode aus der Rückfrage. Der gilt nur für genau diese Werte und Bedenken; ändert sich
   etwas, fragt der Server erneut.
 - Claude Code fragt außerdem bei jedem Erfassen nach einer Freigabe, auch wenn du die Werkzeuge allgemein
-  erlaubt hast. Abschalten lässt sich das mit `NKF_NO_RECORD_PROMPT=1`.
+  erlaubt hast. Im Auto-Modus entfällt diese Freigabe; die Rückfrage bei Bedenken kommt dort trotzdem.
+  Abschalten lässt sich die Freigabe mit `NKF_NO_RECORD_PROMPT=1`.
 
 ## Voraussetzungen
 
