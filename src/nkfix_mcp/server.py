@@ -15,7 +15,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 import anyio
 from mcp.server.mcpserver import MCPServer
 
-from nkfix_mcp import __version__, resources
+from nkfix_mcp import __version__, prompts, resources
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.config import Config, ConfigError
 from nkfix_mcp.tools import check, connection, invoices, meters, properties, record, statements, tenants
@@ -71,6 +71,7 @@ def build_server(nkf: NkfClient, scope: Scope | None = None, lifespan: Lifespan 
         domain.register(server, nkf)
     check.register(server, nkf)
     resources.register(server, nkf)
+    prompts.register(server, may_record)
     if may_record:
         record.register(server, nkf, require_interaction=nkf.config.prompt_on_record)
     return server
