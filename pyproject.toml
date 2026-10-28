@@ -27,7 +27,7 @@ dependencies = [
 nkfix-mcp = "nkfix_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["nkfix_mcp"]
+packages = ["src/nkfix_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
