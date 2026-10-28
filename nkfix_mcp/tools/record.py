@@ -225,7 +225,59 @@ ReceiptPath = Annotated[str, Field(description=(
 
 PAYMENT_TYPES_HELP = ('Miete: Kaltmiete. Nebenkostenvorauszahlung: der monatliche NK-Abschlag; eine Warmmiete '
                       'teilst du in beide auf (Soll siehe get_advance_payment_status). Nebenkostenzahlung: '
-                      'Nachzahlung auf eine Abrechnung. Kaution: Mietsicherheit.')
+                      'Nachzahlung auf eine Abrechnung oder Guthabenauszahlung negativ, jeweils mit statement_id. '
+                      'Kaution: Mietsicherheit.')
+SETTLEMENT_PAYMENT = 'Nebenkostenzahlung'
+StatementId = Annotated[int | None, Field(description=(
+    'Abrechnung, auf die diese Nachzahlung (oder ein ausgezahltes Guthaben, negativ) geht, siehe list_statements. '
+    'Nur bei Nebenkostenzahlung; ohne sie zählt die Zahlung in der Abrechnung nicht als bezahlt.'))]
+
+
+def _outstanding_text(outstanding: Decimal) -> str:
+    """Positive: the tenant still owes; negative: a credit the landlord still pays out (zahlungsstand.py)."""
+    if outstanding < 0:
+        return f'{format_money(-outstanding)} € Guthaben auszuzahlen'
+    return f'{format_money(outstanding)} € offen'
+
+
+def _statement_text(statement: dict[str, Any]) -> str:
+    period = f'{_format_date(statement["start_date"])} bis {_format_date(statement["end_date"])}'
+    outstanding = as_amount(statement.get('offen_betrag'))
+    if outstanding is None:
+        return f'Abrechnung {statement["id"]} ({period})'
+    return f'Abrechnung {statement["id"]} ({period}, {_outstanding_text(outstanding)})'
+
+
+def _unlinked_concerns(tenant_statements: list[dict[str, Any]]) -> list[str]:
+    """A settlement payment without a statement does not count as paid anywhere."""
+    if not tenant_statements:
+        return []
+    return ['Die Zahlung wird keiner Abrechnung zugeordnet und zählt dort nicht als bezahlt. Abrechnungen dieses '
+            f'Mieters: {"; ".join(_statement_text(s) for s in tenant_statements)}. Gib die passende als '
+            'statement_id mit.']
+
+
+def _outstanding_concerns(statement: dict[str, Any], amount: Decimal) -> list[str]:
+    """The payment is not the amount still outstanding on its statement."""
+    # Old statements without a version have no payment status.
+    outstanding = as_amount(statement.get('offen_betrag'))
+    if outstanding is None or amount == outstanding:
+        return []
+    prefix = f'In Abrechnung {statement["id"]} sind {_outstanding_text(outstanding)}'
+    if outstanding == 0:
+        return [f'Abrechnung {statement["id"]} ist schon beglichen; die Zahlung über {format_money(amount)} € wäre '
+                'zu viel.']
+    if outstanding < 0 < amount:
+        return [f'{prefix}, die Zahlung ist aber positiv ({format_money(amount)} €). Eine Auszahlung wird negativ '
+                f'erfasst ({format_money(outstanding)}).']
+    if amount < 0 < outstanding:
+        return [f'{prefix}, die Zahlung ist aber negativ ({format_money(amount)} €). Negativ wird nur ein '
+                'ausgezahltes Guthaben erfasst.']
+    # Same sign: compare what is paid (or paid out) with what is due.
+    paid, due = abs(amount), abs(outstanding)
+    difference = f'{format_money(abs(paid - due))} € {"mehr" if paid > due else "weniger"}'
+    payment = 'die Auszahlung' if outstanding < 0 else 'die Zahlung'
+    return [f'{prefix}, {payment} ist {format_money(paid)} € ({difference}).']
 
 
 def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True) -> None:
@@ -243,15 +295,33 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
 
     @report_errors
     async def precheck_payment(tenant_id: int, amount: Decimal, payment_date: str, payment_type: str,
-                               ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+                               statement_id: int | None, ctx: Context) -> Elicit[ConfirmationPrompt] | PrecheckResult:
+        # The API would silently drop billing_report_id for any other type.
+        if statement_id is not None and payment_type != SETTLEMENT_PAYMENT:
+            raise ToolError(f'statement_id gibt es nur bei {SETTLEMENT_PAYMENT}, nicht bei {payment_type}.')
         concerns = [
             f'Eine Zahlung über {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)} gibt es '
             f'schon für diesen Mieter (Zahlung {z["id"]}).'
             for z in await nkf.get('/api/payments')
             if z['tenant_id'] == tenant_id and z['payment_date'] == payment_date and z['type'] == payment_type
             and as_amount(z['amount']) == amount]
-        return _ask(ctx, f'Neue Zahlung: {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)}, '
-                         f'Mieter {tenant_id}.', concerns, ('payment', tenant_id, amount, payment_date, payment_type))
+        if payment_type == SETTLEMENT_PAYMENT:
+            own = [s for s in await nkf.get('/api/billing/reports') if s['tenant_id'] == tenant_id]
+            if statement_id is None:
+                concerns += _unlinked_concerns(own)
+            else:
+                statement = next((s for s in own if s['id'] == statement_id), None)
+                if statement is None:
+                    # Also for a locked tenant: the API leaves their statements out of the list.
+                    raise ToolError(f'Abrechnung {statement_id} gibt es für Mieter {tenant_id} nicht '
+                                    '(siehe list_statements).')
+                concerns += _outstanding_concerns(statement, amount)
+        summary = (f'Neue Zahlung: {format_money(amount)} € ({payment_type}) vom {_format_date(payment_date)}, '
+                   f'Mieter {tenant_id}')
+        if statement_id is not None:
+            summary += f', Abrechnung {statement_id}'
+        return _ask(ctx, summary + '.', concerns,
+                    ('payment', tenant_id, amount, payment_date, payment_type, statement_id))
 
     @tool(server, 'Zahlung erfassen', CREATE_ONLY, meta=meta)
     @report_errors
@@ -261,16 +331,18 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         payment_date: Annotated[IsoDate, Field(description='Zahlungseingang, YYYY-MM-DD')],
         payment_type: Annotated[PaymentType, Field(description=PAYMENT_TYPES_HELP)],
         decision: Annotated[ElicitationResult[ConfirmationPrompt], Resolve(precheck_payment)],
+        statement_id: StatementId = None,
         approval_code: ApprovalCode = None,
     ) -> RecordResult:
         """Legt in NebenkostenFix eine eingegangene Zahlung eines Mieters an (schreibt, ändert nichts
-        Bestehendes). Gibt es dieselbe Zahlung schon, wird vorher nachgefragt."""
+        Bestehendes). Gibt es dieselbe Zahlung schon, wird vorher nachgefragt. Eine Nachzahlung gehört an ihre
+        Abrechnung (statement_id); fehlt sie oder weicht der Betrag vom offenen Betrag ab, wird nachgefragt."""
         result = _decide(decision, approval_code)
         if not result.save:
             return result.response
-        return _saved(await nkf.post('/api/payments', {
+        return _saved(await nkf.post('/api/payments', _without_none({
             'tenant_id': tenant_id, 'amount': format_money(amount), 'type': payment_type,
-            'payment_date': payment_date}), result)
+            'payment_date': payment_date, 'billing_report_id': statement_id})), result)
 
     # --- Meter reading -------------------------------------------------------
 

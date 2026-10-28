@@ -56,6 +56,29 @@ async def test_create_payment_find_it_again_and_detect_duplicate(instance):
         assert fourth['saved'] is False and 'passt nicht' in fourth['note']
 
 
+async def test_settlement_payment_with_statement_settles_it(instance):
+    async with connected(instance, 'erfassen') as mcp:
+        tenants = (await call(mcp, 'list_tenants'))['items']
+        anna = next(m['id'] for m in tenants if m['name'] == 'Anna Beispiel')
+        ben = next(m['id'] for m in tenants if m['name'] == 'Ben Beispiel')
+        statement = (await call(mcp, 'list_statements', tenant_id=anna))['items'][0]
+        assert statement['payment_status'] == 'offen' and statement['outstanding_amount'] not in (None, '0.00')
+        payment = {'tenant_id': anna, 'amount': statement['outstanding_amount'],
+                   'payment_date': TODAY.isoformat(), 'payment_type': 'Nebenkostenzahlung'}
+
+        without = await call(mcp, 'record_payment', **payment)
+        assert without['saved'] is False and 'keiner Abrechnung zugeordnet' in without['concerns'][0]
+
+        # Ben has no statement of his own; Anna's is not his.
+        foreign = await mcp.call_tool('record_payment', {**payment, 'tenant_id': ben, 'statement_id': statement['id']})
+        assert foreign.is_error and 'gibt es für Mieter' in foreign.content[0].text
+
+        linked = await call(mcp, 'record_payment', **payment, statement_id=statement['id'])
+        assert linked['saved'] is True and linked['concerns'] == []
+        after = (await call(mcp, 'list_statements', tenant_id=anna))['items'][0]
+        assert (after['payment_status'], after['outstanding_amount']) == ('beglichen', '0.00')
+
+
 async def test_backwards_reading_asks_for_confirmation_forward_reading_is_saved(instance):
     async with connected(instance, 'erfassen') as mcp:
         house = next(i['id'] for i in (await call(mcp, 'list_properties'))['items'] if i['is_example'])

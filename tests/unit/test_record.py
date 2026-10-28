@@ -254,6 +254,164 @@ async def test_read_key_gets_clear_message_when_recording():
     assert 'Lesen und erfassen' in result.content[0].text
 
 
+# --- Settlement payment and its statement --------------------------------------
+# NebenkostenFix counts a settlement payment against a statement only if it
+# carries billing_report_id; without it the statement stays "offen".
+
+STATEMENT = {'id': 3, 'tenant_id': 1, 'tenant_name': 'Erika Muster', 'apartment_name': 'EG', 'property_id': 1,
+             'property_name': 'Musterhaus', 'start_date': '2025-01-01', 'end_date': '2025-12-31',
+             'created_at': '27.10.2026', 'veraltet': False, 'zugestellt_am': None, 'offen_betrag': '108.32',
+             'zahlungsstand': 'offen'}
+OTHER_TENANTS_STATEMENT = {**STATEMENT, 'id': 4, 'tenant_id': 2, 'tenant_name': 'Max Muster'}
+SETTLEMENT = {'tenant_id': 1, 'amount': '108.32', 'payment_date': '2026-10-19', 'payment_type': 'Nebenkostenzahlung'}
+
+
+def with_statements(*statements: dict) -> FakeNkf:
+    return sample_data().json('GET', '/api/billing/reports', list(statements))
+
+
+async def test_settlement_payment_is_linked_to_its_statement():
+    fake = with_statements(STATEMENT, OTHER_TENANTS_STATEMENT)
+    data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=3)
+    assert data['saved'] is True and data['concerns'] == []
+    assert FakeNkf.body(fake.sent('POST', '/api/payments')[0]) == {
+        'tenant_id': 1, 'amount': '108.32', 'type': 'Nebenkostenzahlung', 'payment_date': '2026-10-19',
+        'billing_report_id': 3}
+
+
+@pytest.mark.parametrize('payment_type', ['Miete', 'Nebenkostenvorauszahlung', 'Kaution'])
+async def test_statement_id_with_other_payment_type_is_rejected(payment_type):
+    # The API would silently drop billing_report_id for these types.
+    fake = with_statements(STATEMENT)
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'erfassen')) as mcp:
+        result = await mcp.call_tool('record_payment', {**SETTLEMENT, 'payment_type': payment_type,
+                                                        'statement_id': 3})
+    assert result.is_error
+    assert 'nur bei Nebenkostenzahlung' in result.content[0].text
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_statement_of_another_tenant_is_rejected_before_asking():
+    fake = with_statements(STATEMENT, OTHER_TENANTS_STATEMENT)
+    callback = answer_with('accept')
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'erfassen'), elicitation_callback=callback) as mcp:
+        result = await mcp.call_tool('record_payment', {**SETTLEMENT, 'statement_id': 4})
+    assert result.is_error
+    assert 'Abrechnung 4 gibt es für Mieter 1 nicht' in result.content[0].text
+    assert callback.questions == []
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_settlement_payment_without_statement_raises_a_concern():
+    fake = with_statements(STATEMENT, OTHER_TENANTS_STATEMENT)
+    data = await call(fake, 'record_payment', **SETTLEMENT)
+    assert data['saved'] is False
+    [concern] = data['concerns']
+    assert 'keiner Abrechnung zugeordnet' in concern
+    assert 'Abrechnung 3 (01.01.2025 bis 31.12.2025, 108.32 € offen)' in concern
+    assert 'Abrechnung 4' not in concern
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_settlement_payment_without_statement_is_fine_if_tenant_has_none():
+    fake = with_statements(OTHER_TENANTS_STATEMENT)
+    data = await call(fake, 'record_payment', **SETTLEMENT)
+    assert data['saved'] is True and data['concerns'] == []
+
+
+@pytest.mark.parametrize(('amount', 'difference'), [('135.00', '26.68 € mehr'), ('100.00', '8.32 € weniger')])
+async def test_amount_other_than_outstanding_raises_a_concern(amount, difference):
+    fake = with_statements(STATEMENT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': amount}, statement_id=3)
+    assert data['saved'] is False
+    assert data['concerns'] == [f'In Abrechnung 3 sind 108.32 € offen, die Zahlung ist {amount} € '
+                                f'({difference}).']
+
+
+async def test_settled_statement_raises_a_double_payment_concern():
+    fake = with_statements({**STATEMENT, 'offen_betrag': '0.00', 'zahlungsstand': 'beglichen'})
+    data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=3)
+    assert data['concerns'] == ['Abrechnung 3 ist schon beglichen; die Zahlung über 108.32 € wäre zu viel.']
+
+
+CREDIT = {**STATEMENT, 'offen_betrag': '-42.10', 'zahlungsstand': 'offen'}
+
+
+async def test_credit_payout_of_the_outstanding_credit_raises_no_concern():
+    fake = with_statements(CREDIT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-42.10'}, statement_id=3)
+    assert data['saved'] is True and data['concerns'] == []
+
+
+async def test_credit_payout_with_wrong_sign_says_payouts_are_negative():
+    fake = with_statements(CREDIT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '42.10'}, statement_id=3)
+    assert data['concerns'] == ['In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Zahlung ist aber positiv '
+                                '(42.10 €). Eine Auszahlung wird negativ erfasst (-42.10).']
+
+
+async def test_negative_payment_on_an_outstanding_amount_says_only_payouts_are_negative():
+    fake = with_statements(STATEMENT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-108.32'}, statement_id=3)
+    assert data['concerns'] == ['In Abrechnung 3 sind 108.32 € offen, die Zahlung ist aber negativ (-108.32 €). '
+                                'Negativ wird nur ein ausgezahltes Guthaben erfasst.']
+
+
+async def test_credit_payout_of_another_amount_names_the_difference():
+    fake = with_statements(CREDIT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-50.00'}, statement_id=3)
+    assert data['concerns'] == ['In Abrechnung 3 sind 42.10 € Guthaben auszuzahlen, die Auszahlung ist 50.00 € '
+                                '(7.90 € mehr).']
+
+
+async def test_unlinked_concern_names_a_credit_as_credit():
+    fake = with_statements(CREDIT)
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '-42.10'})
+    assert 'Abrechnung 3 (01.01.2025 bis 31.12.2025, 42.10 € Guthaben auszuzahlen)' in data['concerns'][0]
+
+
+async def test_statement_without_outstanding_amount_raises_no_amount_concern():
+    # Old statements without a version have no payment status.
+    fake = with_statements({**STATEMENT, 'offen_betrag': None, 'zahlungsstand': None})
+    data = await call(fake, 'record_payment', **{**SETTLEMENT, 'amount': '135.00'}, statement_id=3)
+    assert data['saved'] is True and data['concerns'] == []
+
+
+async def test_approval_code_is_bound_to_the_statement():
+    # The only concern is the duplicate, worded the same for both statements:
+    # only statement_id itself tells the two calls apart.
+    fake = with_statements(STATEMENT, {**STATEMENT, 'id': 5, 'start_date': '2024-07-01', 'end_date': '2024-12-31'})
+    fake.json('GET', '/api/payments', [{**PAYMENT, 'amount': 108.32, 'payment_date': '2026-10-19',
+                                        'type': 'Nebenkostenzahlung'}])
+    first = await call(fake, 'record_payment', **SETTLEMENT, statement_id=3)
+    assert first['concerns'] == ['Eine Zahlung über 108.32 € (Nebenkostenzahlung) vom 19.10.2026 gibt es schon für '
+                                 'diesen Mieter (Zahlung 1).']
+    data = await call(fake, 'record_payment', **SETTLEMENT, statement_id=5, approval_code=first['approval_code'])
+    assert data['saved'] is False and 'passt nicht' in data['note']
+    assert fake.sent('POST', '/api/payments') == []
+
+
+async def test_other_payment_types_do_not_load_statements():
+    fake = sample_data()
+    await call(fake, 'record_payment', tenant_id=1, amount='60', payment_date='2025-11-03', payment_type='Miete')
+    assert fake.sent('GET', '/api/billing/reports') == []
+
+
+async def test_instructions_ask_for_the_statement_of_a_settlement_payment():
+    instructions = build_server(client(FakeNkf()), 'erfassen').instructions
+    assert 'statement_id' in instructions and 'list_statements' in instructions
+    assert 'Guthabenauszahlung negativ' in instructions
+
+
+async def test_payment_type_help_points_to_statement_id():
+    record_payment = (await tools('erfassen'))['record_payment']
+    payment_type_help = record_payment.input_schema['properties']['payment_type']['description']
+    assert 'statement_id' in payment_type_help and 'Guthabenauszahlung negativ' in payment_type_help
+    assert 'list_statements' in record_payment.input_schema['properties']['statement_id']['description']
+
+
 # --- Meter reading -----------------------------------------------------------
 
 async def test_unremarkable_meter_reading_is_saved_without_trotzdem():
