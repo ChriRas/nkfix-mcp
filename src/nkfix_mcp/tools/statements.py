@@ -181,6 +181,17 @@ def _new_advance_payment(raw: dict[str, Any] | None) -> dict[str, str | None] | 
     }
 
 
+async def fetch_deadlines(nkf: NkfClient) -> list[Deadline]:
+    """Upcoming deadlines, as list_deadlines and the resources show them."""
+    events = (await nkf.get('/api/fristen')).get('termine') or []
+    return [Deadline(date=t['datum'], kind=t['art'], title=t['titel']) for t in events]
+
+
+async def fetch_statements(nkf: NkfClient) -> list[Statement]:
+    """All statements, as list_statements and the overview resource show them."""
+    return [_statement(raw) for raw in await nkf.get('/api/billing/reports')]
+
+
 def register(server: MCPServer, nkf: NkfClient) -> None:
     @tool(server, 'Fristen', READ_ONLY)
     @report_errors
@@ -188,15 +199,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         until: Annotated[IsoDate | None, Field(description='nur Termine bis zu diesem Datum (YYYY-MM-DD)')] = None,
     ) -> ItemList[Deadline]:
         """Anstehende Termine und Fristen: Abrechnungsfristen, Einwendungsfristen, Eichfristen."""
-        events = (await nkf.get('/api/fristen')).get('termine') or []
-        return truncate(
-            [
-                Deadline(date=t['datum'], kind=t['art'], title=t['titel'])
-                for t in events
-                if until is None or t['datum'] <= until
-            ],
-            MAX_ITEMS,
-        )
+        return truncate([t for t in await fetch_deadlines(nkf) if until is None or t.date <= until], MAX_ITEMS)
 
     @tool(server, 'Datenqualität', READ_ONLY)
     @report_errors
@@ -327,7 +330,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         return truncate(
             [
                 a
-                for a in (_statement(raw) for raw in await nkf.get('/api/billing/reports'))
+                for a in await fetch_statements(nkf)
                 if (tenant_id is None or a.tenant_id == tenant_id)
                 and (property_id is None or a.property_id == property_id)
             ],

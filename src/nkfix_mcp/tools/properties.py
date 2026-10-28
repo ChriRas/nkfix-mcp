@@ -42,24 +42,26 @@ class HeatingSystem(BaseModel):
     hot_water_method: str | None
 
 
+async def fetch_properties(nkf: NkfClient) -> list[Property]:
+    """All properties, as list_properties and the overview resource show them."""
+    return [
+        Property(
+            id=i['id'],
+            name=i['name'],
+            billing_year_start=i.get('abrechnungsjahr_beginn'),
+            standalone=bool(i.get('is_standalone')),
+            is_example=bool(i.get('ist_beispiel')),
+        )
+        for i in await nkf.get('/api/properties')
+    ]
+
+
 def register(server: MCPServer, nkf: NkfClient) -> None:
     @tool(server, 'Immobilien', READ_ONLY)
     @report_errors
     async def list_properties() -> ItemList[Property]:
         """Alle Immobilien (Häuser bzw. Objekte) mit ID und Name. Ausgangspunkt für fast alle anderen Werkzeuge."""
-        return truncate(
-            [
-                Property(
-                    id=i['id'],
-                    name=i['name'],
-                    billing_year_start=i.get('abrechnungsjahr_beginn'),
-                    standalone=bool(i.get('is_standalone')),
-                    is_example=bool(i.get('ist_beispiel')),
-                )
-                for i in await nkf.get('/api/properties')
-            ],
-            MAX_ITEMS,
-        )
+        return truncate(await fetch_properties(nkf), MAX_ITEMS)
 
     @tool(server, 'Wohnungen', READ_ONLY)
     @report_errors

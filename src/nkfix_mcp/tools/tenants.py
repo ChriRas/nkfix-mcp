@@ -88,10 +88,13 @@ def _payment(raw: dict[str, Any]) -> Payment:
     )
 
 
-def register(server: MCPServer, nkf: NkfClient) -> None:
-    async def apartment_to_property() -> dict[int, int]:
-        return {w['id']: w['property_id'] for w in await nkf.get('/api/apartments')}
+async def fetch_tenants(nkf: NkfClient) -> list[Tenant]:
+    """All tenants with their property, as list_tenants and the overview resource show them."""
+    apartment_to_property = {w['id']: w['property_id'] for w in await nkf.get('/api/apartments')}
+    return [_tenant(m, apartment_to_property) for m in await nkf.get('/api/tenants')]
 
+
+def register(server: MCPServer, nkf: NkfClient) -> None:
     @tool(server, 'Mieter', READ_ONLY)
     @report_errors
     async def list_tenants(
@@ -101,9 +104,8 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         ] = False,
     ) -> ItemList[Tenant]:
         """Mieter mit Wohnung, Ein- und Auszug und dem Datum, bis zu dem zuletzt abgerechnet wurde."""
-        mapping = await apartment_to_property()
         today = date.today().isoformat()
-        tenants = [_tenant(m, mapping) for m in await nkf.get('/api/tenants')]
+        tenants = await fetch_tenants(nkf)
         return truncate(
             [
                 m

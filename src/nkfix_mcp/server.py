@@ -15,7 +15,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 import anyio
 from mcp.server.mcpserver import MCPServer
 
-from nkfix_mcp import __version__
+from nkfix_mcp import __version__, resources
 from nkfix_mcp.client import NkfClient
 from nkfix_mcp.config import Config, ConfigError
 from nkfix_mcp.tools import check, connection, invoices, meters, properties, record, statements, tenants
@@ -35,6 +35,8 @@ Abrechnungen vorprüfen, ohne etwas zu verändern.
 - IDs (Immobilie, Mieter, Kostenart, Zähler) ermittelst du über die Lese-Werkzeuge, rate sie nie.
 - Geldbeträge sind Strings mit Punkt und zwei Nachkommastellen ("1234.56"), in Euro.
 - Ändern oder löschen kann dieser Server nichts; Korrekturen macht der Mensch in NebenkostenFix.
+- Einen Überblick über Immobilien, Mieter (mit IDs), offene Abrechnungen und nahe Fristen gibt die Resource
+  nkfix://overview; du liest sie mit ReadMcpResourceTool (Server nkfix), wenn dein Client das anbietet.
 """
 
 RECORD_INSTRUCTIONS = """\
@@ -68,6 +70,7 @@ def build_server(nkf: NkfClient, scope: Scope | None = None, lifespan: Lifespan 
     for domain in (properties, tenants, invoices, meters, statements):
         domain.register(server, nkf)
     check.register(server, nkf)
+    resources.register(server, nkf)
     if may_record:
         record.register(server, nkf, require_interaction=nkf.config.prompt_on_record)
     return server
