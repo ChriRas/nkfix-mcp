@@ -134,3 +134,11 @@ async def test_prepare_year_end_takes_the_period_from_the_billing_year_not_the_c
     step4 = next(line for line in instruction.splitlines() if line.startswith('4.'))
     assert 'cutoff_ok' in step4
     assert 'meter_id' in step4
+
+
+async def test_prepare_year_end_reviews_an_existing_statement_instead_of_prechecking_it():
+    # precheck_statement only reports the overlap with the existing statement and hides what is missing.
+    instruction = await text('prepare_year_end', {'property_id': '1', 'year': '2025'})
+    step5 = next(line for line in instruction.splitlines() if line.startswith('5.'))
+    assert step5.index('statement_id') < step5.index('get_statement') < step5.index('precheck_statement')
+    assert 'delivered_at' in step5
