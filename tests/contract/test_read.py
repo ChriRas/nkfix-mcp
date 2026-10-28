@@ -1,6 +1,6 @@
 """Read tools against the sample property of a real instance.
 
-The field guard is the actual contract: every field that ``read.py`` reads
+The field guard is the actual contract: every field that the read tools read
 from a response must be present in the real response. Otherwise, if upstream
 renames a field, ``.get()`` silently returns ``None``.
 """
@@ -13,7 +13,7 @@ from tests.contract.helpers import call, connected
 
 pytestmark = pytest.mark.anyio
 
-# Endpoint -> fields that read.py reads (for lists: fields of one entry).
+# Endpoint -> fields that the read tools read (for lists: fields of one entry).
 FIELDS = {
     '/api/properties': {'id', 'name', 'abrechnungsjahr_beginn', 'is_standalone', 'ist_beispiel'},
     '/api/apartments': {'id', 'property_id'},

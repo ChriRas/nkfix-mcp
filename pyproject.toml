@@ -60,6 +60,8 @@ ignore = [
     "TRY003",
     # Models document themselves through Field descriptions, tools through their docstring
     # (which is the description the model reads); a docstring on every class would repeat that.
+    # Public helpers (register, format_money, from_response, ...) are named for what they do;
+    # where that is not enough, they have a docstring.
     "D101", "D102", "D103", "D105", "D107",
     # The JSON of the NebenkostenFix API is untyped; Any marks exactly that boundary.
     "ANN401",

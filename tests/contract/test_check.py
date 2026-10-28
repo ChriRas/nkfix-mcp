@@ -65,4 +65,27 @@ async def test_checks_work_with_read_key_and_change_nothing(instance):
         assert (hausgeld['allocable_count'], hausgeld['owner_count'], hausgeld['undecided_count']) == (1, 1, 0)
         assert (hausgeld['allocable_total'], hausgeld['owner_total']) == ('300.00', '1000.00')
         assert hausgeld['notes']
+
+        # A stated total that does not add up, and a line item outside the BetrKV catalogue.
+        mismatch = await call(
+            mcp,
+            'check_hausgeld',
+            line_items=[
+                {'name': 'Hausmeister', 'total_amount': '2400.00', 'own_amount': '300.00'},
+                {'name': 'Fantasieposten Zauberbrunnen', 'total_amount': '400.00', 'own_amount': '50.00'},
+            ],
+            own_shares=125,
+            total_shares=1000,
+            statement_total='300.00',
+        )
+        assert mismatch['line_items'][1]['allocable'] is None
+        assert (mismatch['undecided_count'], mismatch['undecided_total']) == (1, '50.00')
+        assert mismatch['sum_check'] == {
+            'statement_total': '300.00',
+            'counted_total': '350.00',
+            'deviation': '50.00',
+            'matches': False,
+            'note': mismatch['sum_check']['note'],
+        }
+        assert mismatch['sum_check']['note']
     assert await sample_data(instance) == previous

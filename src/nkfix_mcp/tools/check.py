@@ -61,8 +61,8 @@ class HausgeldLineItem(BaseModel):
 
 
 class HausgeldResult(BaseModel):
-    """One line item as NebenkostenFix classified and recalculated it."""
-
+    # One line item as NebenkostenFix classified and recalculated it. A comment, not a docstring:
+    # pydantic would put a docstring into the schema the model reads.
     name: str
     total_amount: str | None
     own_amount: str | None = Field(description='eigener Betrag laut Abrechnung')
@@ -90,7 +90,7 @@ class HausgeldCheck(BaseModel):
     line_items: list[HausgeldResult]
     allocable_total: str | None = Field(description='Summe der umlagefähigen eigenen Beträge')
     owner_total: str | None = Field(description='Summe dessen, was der Eigentümer trägt')
-    undecided_total: str | None = Field(description='Summe der Positionen mit allocable=null')
+    undecided_total: str | None = Field(description='Summe der eigenen Beträge der Positionen mit allocable=null')
     allocable_count: int | None
     owner_count: int | None
     undecided_count: int | None

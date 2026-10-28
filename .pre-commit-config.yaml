@@ -2,6 +2,7 @@
 # The hooks use the pinned tools: ruff from requirements-dev.txt, mypy from the project's .venv
 # (it needs the project's dependencies to check the types).
 default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
@@ -26,5 +27,5 @@ repos:
       - id: no-ai-attribution
         name: no Co-Authored-By or "Generated with Claude Code" in the commit message
         language: pygrep
-        entry: '(?i)^co-authored-by:|generated with claude code'
+        entry: '(?i)^\s*co-authored-by:|generated with \[?claude code'
         stages: [commit-msg]
