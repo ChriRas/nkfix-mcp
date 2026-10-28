@@ -56,7 +56,7 @@ def test_tilde_is_expanded(tmp_path, monkeypatch):
     assert read_receipt('~/b.pdf', directory=None).filename == 'b.pdf'
 
 
-def test_receipt_dir_applies_strictly_even_to_detours(tmp_path):
+def test_receipt_dir_applies_strictly_even_via_dotdot_and_symlinks(tmp_path):
     directory = tmp_path / 'belege'
     directory.mkdir()
     (directory / 'ok.pdf').write_bytes(PDF)

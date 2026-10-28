@@ -144,7 +144,7 @@ async def test_expired_session_is_renewed_exactly_once():
     assert [a.url.path for a in fake.requests] == ['/login', '/api/properties', '/login', '/api/properties']
 
 
-async def test_session_that_does_not_hold_is_named_as_cookie_problem():
+async def test_session_that_does_not_stick_is_named_as_cookie_problem():
     # Login works, the request after it stays 401: Secure cookie over http://.
     fake = FakeNkf()
     fake.set_route('POST', '/login', json_response(200, {'username': 'testvermieter'}, {'Set-Cookie': 'session=a'}))

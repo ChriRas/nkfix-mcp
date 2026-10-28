@@ -3,7 +3,7 @@
 NebenkostenFix accepts PDF, JPEG, PNG, WebP and HEIC and detects the type by
 content, not by extension (``nebenkostenfix/uploads.py``). The same check
 runs here beforehand: the model gets a clear message instead of a 400, and a
-file that is not a receipt never leaves the machine at all.
+file that is not a receipt never leaves the computer at all.
 
 The server reads any file whose path the model names. If
 ``NKF_RECEIPT_DIR`` is set, only files inside it, after resolving ``..`` and
@@ -56,13 +56,13 @@ def sniff_mime(head: bytes) -> str | None:
 
 
 def read_receipt(path: str, directory: Path | None) -> Receipt:
-    raw = Path(path).expanduser()
-    if directory is not None and not raw.is_absolute():
-        raw = directory / raw
+    given = Path(path).expanduser()
+    if directory is not None and not given.is_absolute():
+        given = directory / given
     # Without a directory, every message names only the path as it came.
-    shown_path = str(raw) if directory is None else None
+    shown_path = str(given) if directory is None else None
     try:
-        file = raw.resolve(strict=True)
+        file = given.resolve(strict=True)
     except FileNotFoundError:
         raise ReceiptError(f'Beleg nicht gefunden: {shown_path or path}') from None
     except (OSError, RuntimeError) as error:

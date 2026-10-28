@@ -74,11 +74,11 @@ def test_receipt_dir_must_be_an_existing_directory(tmp_path):
 
 
 @pytest.mark.parametrize(('value', 'expected'), [(None, True), ('0', True), ('1', False), ('ja', False)])
-def test_confirm_on_record_is_the_default(value, expected):
+def test_prompt_on_record_is_the_default(value, expected):
     env = {'NKF_URL': 'http://x'}
     if value is not None:
         env['NKF_NO_RECORD_PROMPT'] = value
-    assert Config.from_env(env).confirm_on_record is expected
+    assert Config.from_env(env).prompt_on_record is expected
 
 
 @pytest.mark.parametrize(('url', 'local'), [

@@ -6,8 +6,8 @@ request is authenticated and every error arrives as ``NkfError`` with
 German text.
 
 Deliberately never sent: ``Origin``, ``Referer`` and ``Sec-Fetch-Site``. With
-them, NebenkostenFix takes a writing request for an attack from a foreign
-browser window (CSRF) and answers 403.
+them, NebenkostenFix takes a state-changing request for an attack from
+another site (CSRF) and answers 403.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class NkfClient:
     def __init__(self, config: Config, transport: httpx2.AsyncBaseTransport | None = None,
                  timeout_s: float = TIMEOUT_S) -> None:
         self.config = config
-        self.auth_method = auth_for(config)
+        self.auth = auth_for(config)
         self._http = httpx2.AsyncClient(
             base_url=config.url, transport=transport, timeout=timeout_s,
             headers={'Accept': 'application/json'}, follow_redirects=False)
@@ -63,16 +63,16 @@ class NkfClient:
         return await self._request('POST', path, json=data or {})
 
     async def _request(self, method: str, path: str, **options: Any) -> Any:
-        kind = self.auth_method.kind
+        auth_method = self.auth.auth_method
         try:
-            await self.auth_method.ensure(self._http)
-            seen = self.auth_method.generation
+            await self.auth.ensure(self._http)
+            seen = self.auth.generation
             response = await self._send(method, path, **options)
-            if _session_expired(response) and await self.auth_method.renew(self._http, seen):
+            if _session_expired(response) and await self.auth.renew(self._http, seen):
                 log.info('Sitzung abgelaufen, neu angemeldet.')
                 response = await self._send(method, path, **options)
                 if _session_expired(response):
-                    # Login works, but the session does not hold: usually a
+                    # Login works, but the session does not stick: usually a
                     # Secure cookie (BEHIND_HTTPS) with an http:// address.
                     raise NkfError('Die Anmeldung bei NebenkostenFix klappt, aber die Sitzung wird nicht gehalten '
                                    '(Cookie). Läuft die Instanz hinter HTTPS, nutze die https://-Adresse als '
@@ -100,13 +100,13 @@ class NkfClient:
         data = errors.body(response)
         if response.status_code == 409 and data.get('nachfrage'):
             raise NkfConfirmationRequired(data)
-        error = errors.from_response(response, kind)
+        error = errors.from_response(response, auth_method)
         if error.code in ('nicht_per_schluessel', 'fremder_ursprung'):
             log.error('NebenkostenFix lehnt %s %s ab: %s', method, path, error.code)
         raise error
 
     async def _send(self, method: str, path: str, **options: Any) -> httpx2.Response:
-        return await self._http.request(method, path, headers=self.auth_method.headers(), **options)
+        return await self._http.request(method, path, headers=self.auth.headers(), **options)
 
 
 def _session_expired(response: httpx2.Response) -> bool:

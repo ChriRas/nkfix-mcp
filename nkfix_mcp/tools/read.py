@@ -21,7 +21,7 @@ from nkfix_mcp.formatting import ItemList, format_money, in_year, total, truncat
 from nkfix_mcp.tools import READ_ONLY, IsoDate, report_errors, tool
 
 MAX_ITEMS = 100
-# Measured (review S2-6): 100 invoices are about 20,000 tokens, Claude Code warns from 10,000.
+# Measured (review S2-6): 100 invoices are about 20,000 tokens, Claude Code warns above 10,000.
 MAX_INVOICES = 40
 READINGS_PER_METER = 10
 
@@ -180,7 +180,7 @@ class AdvancePayments(BaseModel):
     months: list[Month]
     outstanding: str | None = Field(description='Summe der Rückstände, über alle Monate')
     overpaid: str | None
-    balance: str | None = Field(description='offen minus überzahlt; positiv: der Mieter ist im Rückstand')
+    balance: str | None = Field(description='outstanding minus overpaid; positiv: der Mieter ist im Rückstand')
 
 
 class Deadline(BaseModel):
@@ -314,7 +314,7 @@ def _statement(raw: dict[str, Any]) -> Statement:
 
 
 def _statement_details(statement_id: int, raw: dict[str, Any]) -> StatementDetails:
-    # Statements without a snapshot (before NK-061) return the result flat.
+    # Statements without a snapshot (before NK-061) return a flat result.
     result = raw.get('ergebnis') or raw
     advance_payment = raw.get('vorauszahlung')
     return StatementDetails(
@@ -533,7 +533,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
                                  'change_percent': k.get('aenderung'), 'jump': k.get('sprung'),
                                  'state': k.get('zustand')} for k in raw.get('kostenarten') or []],
             'readings': [{'meter_id': a.get('id'), 'number': a.get('nummer'), 'cost_category': a.get('kostenart'),
-                          'apartment': a.get('wohnung'), 'last_reading': a.get('letzte'),
+                          'apartment': a.get('wohnung'), 'last_reading_date': a.get('letzte'),
                           'cutoff_ok': a.get('stichtag_ok'), 'missing_change_readings': a.get('wechsel_fehlen')}
                          for a in raw.get('ablesungen') or []],
             'tenants': [{'id': m.get('id'), 'name': m.get('name'), 'apartment': m.get('wohnung'),

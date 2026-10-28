@@ -56,7 +56,7 @@ async def test_create_payment_find_it_again_and_detect_duplicate(instance):
         assert fourth['saved'] is False and 'passt nicht' in fourth['note']
 
 
-async def test_backwards_meter_reading_is_queried_forwards_is_saved(instance):
+async def test_backwards_reading_asks_for_confirmation_forward_reading_is_saved(instance):
     async with connected(instance, 'erfassen') as mcp:
         house = next(i['id'] for i in (await call(mcp, 'list_properties'))['items'] if i['is_example'])
         meter = next(z for z in (await call(mcp, 'list_meters', property_id=house))['items']

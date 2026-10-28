@@ -49,17 +49,17 @@ IsoDate = Annotated[str, Field(pattern=r'^\d{4}-\d{2}-\d{2}$', description='Datu
                     AfterValidator(_calendar_day)]
 
 
-def report_errors(tool: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+def report_errors(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     """``NkfError`` and ``ReceiptError`` as ``ToolError``: only its text reaches the model.
 
     Also for the resolvers of the record tools: their errors would otherwise
     reach the model as "Error executing tool" without a reason.
     """
 
-    @functools.wraps(tool)
+    @functools.wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
-            return await tool(*args, **kwargs)
+            return await func(*args, **kwargs)
         except (NkfError, ReceiptError) as error:
             raise ToolError(str(error)) from error
 

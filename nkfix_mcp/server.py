@@ -66,7 +66,7 @@ def build_server(nkf: NkfClient, scope: Scope | None = None, lifespan: Lifespan 
     read.register(server, nkf)
     check.register(server, nkf)
     if may_record:
-        record.register(server, nkf, require_interaction=nkf.config.confirm_on_record)
+        record.register(server, nkf, require_interaction=nkf.config.prompt_on_record)
     return server
 
 

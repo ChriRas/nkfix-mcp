@@ -52,7 +52,7 @@ class ItemList(BaseModel, Generic[T]):
 
 
 def truncate(items: Sequence[T], limit: int) -> ItemList[T]:
-    """Shorten long lists: Claude Code warns from 10,000 tokens per tool response."""
+    """Shorten long lists: Claude Code warns above 10,000 tokens per tool response."""
     omitted = max(0, len(items) - limit)
     note = None
     if omitted:

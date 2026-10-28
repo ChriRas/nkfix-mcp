@@ -20,7 +20,7 @@ from nkfix_mcp.config import AuthMethod, Config
 
 
 class OpenAccess:
-    kind: AuthMethod = 'offen'
+    auth_method: AuthMethod = 'offen'
     # Counts the logins. Whoever notes the value before a request can tell
     # after a 401 whether someone else has already logged in again meanwhile.
     generation = 0
@@ -37,7 +37,7 @@ class OpenAccess:
 
 
 class ApiKeyAuth(OpenAccess):
-    kind: AuthMethod = 'schluessel'
+    auth_method: AuthMethod = 'schluessel'
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -50,7 +50,7 @@ class ApiKeyAuth(OpenAccess):
 
 
 class SessionAuth(OpenAccess):
-    kind: AuthMethod = 'sitzung'
+    auth_method: AuthMethod = 'sitzung'
 
     def __init__(self, username: str, password: str) -> None:
         self._username = username
@@ -99,7 +99,7 @@ class SessionAuth(OpenAccess):
             error = errors.NkfError(
                 'NebenkostenFix hat die Anmeldung abgelehnt. Prüfe NKF_USERNAME und NKF_PASSWORD.', 401)
         else:
-            error = errors.from_response(response, self.kind)
+            error = errors.from_response(response, self.auth_method)
         if response.status_code in (401, 409, 429):
             error = errors.NkfError(f'{error} Nach der Korrektur den MCP-Server neu starten.',
                                     error.status, error.code)

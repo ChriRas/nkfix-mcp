@@ -1,7 +1,7 @@
 """Read tools against a mocked-up dataset (fantasy data).
 
 The raw shapes match the responses of NebenkostenFix 0.17.1, taken on
-27.10.2026 from the sample property. The contract tests check that they
+2026-10-27 from the sample property. The contract tests check that they
 still look like that.
 """
 
@@ -212,7 +212,7 @@ async def test_many_invoices_are_truncated_with_note():
     assert len(data['items']) == 40
     assert data['omitted'] == 210
     assert data['total'] == '115000.00'
-    # Claude Code warns from 10,000 tokens on; roughly 3 to 4 characters per token.
+    # Claude Code warns above 10,000 tokens; roughly 3 to 4 characters per token.
     assert len(result.content[0].text) < 30_000
 
 

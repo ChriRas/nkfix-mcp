@@ -83,8 +83,8 @@ async def test_instructions_mention_recording_only_when_possible():
 async def test_record_tools_are_marked_as_writing_and_always_ask():
     all_tools = await tools('erfassen')
     for name in RECORD_TOOLS:
-        note = all_tools[name].annotations
-        assert (note.read_only_hint, note.destructive_hint, note.idempotent_hint) == (False, False, False)
+        hints = all_tools[name].annotations
+        assert (hints.read_only_hint, hints.destructive_hint, hints.idempotent_hint) == (False, False, False)
         assert all_tools[name].meta == {'anthropic/requiresUserInteraction': True}
         assert 'schreibt, ändert nichts Bestehendes' in ' '.join(all_tools[name].description.split())
 
@@ -226,7 +226,7 @@ async def test_duplicate_payment_asks_the_human_if_the_client_can(mode):
 
 @PROTOCOLS
 @pytest.mark.parametrize(('action', 'save'), [('accept', False), ('decline', True), ('cancel', True)])
-async def test_human_no_applies_even_if_the_model_sends_a_code(action, save, mode):
+async def test_human_refusal_stands_even_if_the_model_sends_a_code(action, save, mode):
     fake = sample_data()
     data = await call(fake, 'record_payment', answer_with(action, save), mode=mode, tenant_id=1, amount=650,
                       payment_date='2025-11-03', payment_type='Miete', approval_code='00000000')
@@ -243,7 +243,7 @@ async def test_without_concerns_nobody_is_asked():
     assert callback.questions == []
 
 
-async def test_read_key_on_record_gets_a_clear_message():
+async def test_read_key_gets_clear_message_when_recording():
     # Scope unknown at startup: the tool exists, the instance answers 403.
     fake = sample_data().json('POST', '/api/payments', {'error': 'x', 'code': 'schluessel_umfang'}, status=403)
     nkf = client(fake)
@@ -386,8 +386,8 @@ async def test_record_guard_calls_only_allowed_endpoints(tmp_path):
     ]:
         await call(fake, tool, **arguments)
     for request in fake.requests:
-        call_args = f'{request.method} {request.url.path}'
-        assert any(re.fullmatch(pattern, call_args) for pattern in ALLOWED_RECORD_ENDPOINTS), call_args
+        request_line = f'{request.method} {request.url.path}'
+        assert any(re.fullmatch(pattern, request_line) for pattern in ALLOWED_RECORD_ENDPOINTS), request_line
     assert not any(a.method in ('PUT', 'PATCH', 'DELETE') for a in fake.requests)
     # AENDERT_BESTEHENDES in NebenkostenFix: never send it, neither as JSON nor as a form field.
     posts = [a for a in fake.requests if a.method == 'POST']
@@ -401,7 +401,7 @@ async def test_money_with_decimal_comma_is_understood():
     assert FakeNkf.body(fake.sent('POST', '/api/payments')[0])['amount'] == '1234.50'
 
 
-async def test_invoice_without_header_json_from_instance(monkeypatch):
+async def test_invoice_response_without_id_does_not_crash(monkeypatch):
     # Response 201 without id (e.g. an older instance): no crash.
     fake = sample_data().set_route('POST', '/api/invoices', json_response(201, {}))
     data = await call(fake, 'record_invoice', property_id=1, cost_category_id=3, amount='5', start_date='2025-02-01',

@@ -31,7 +31,7 @@ class Check(BaseModel):
     apartment: str | None
 
 
-class Precheck(BaseModel):
+class StatementPrecheck(BaseModel):
     overall: str = Field(description='excellent, acceptable, warning oder no_meters (nichts zu prüfen); '
                                      'warning umfasst Blockaden und bloße Hinweise')
     blocked: bool = Field(description='mindestens eine blockierende Prüfung ist nicht in Ordnung')
@@ -66,7 +66,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         cost_category_ids: Annotated[list[int] | None, Field(description=(
             'Kostenarten, die abgerechnet werden sollen. Wirkt nur auf die Prüfung auf Überschneidung mit '
             'bestehenden Abrechnungen; Zähler und Rechnungen werden immer für alle Kostenarten geprüft.'))] = None,
-    ) -> Precheck:
+    ) -> StatementPrecheck:
         """Prüft, ob sich eine Nebenkostenabrechnung für den Mieter und Zeitraum erstellen lässt: fehlende
         Rechnungen und Zählerstände, Überschneidung mit bestehenden Abrechnungen, Abrechnungsfrist. Ein Ende in
         der Zukunft kürzt NebenkostenFix auf heute. Erstellt keine Abrechnung und ändert nichts."""
@@ -79,7 +79,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
             blocking=c.get('blocking'), message=c.get('message'), meter_number=c.get('meter_number'),
             apartment=c.get('apartment'),
         ) for c in raw.get('checks') or []]
-        return Precheck(
+        return StatementPrecheck(
             overall=raw['overall'],
             blocked=any(p.blocking and p.status not in ('excellent', 'acceptable') for p in checks),
             checked_until=min(end_date, date.today().isoformat()), checks=checks)

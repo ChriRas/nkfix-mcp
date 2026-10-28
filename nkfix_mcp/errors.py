@@ -51,11 +51,11 @@ def from_response(response: httpx2.Response, auth_method: str) -> NkfError:
                        'einen neuen an und trage ihn als NKF_API_KEY ein. Ein erneuter Versuch hilft nicht.')
         elif code != 'auth_required':
             # NebenkostenFix always answers with a code; without one, the 401
-            # came from something in front, such as a reverse proxy with its own login.
+            # came from something in front of it, such as a reverse proxy with its own login.
             message = (f'Unter {response.request.url.scheme}://{response.request.url.host} verlangt etwas eine '
                        'Anmeldung (HTTP 401), aber nicht NebenkostenFix selbst. Steht ein Proxy davor?')
         elif auth_method == 'schluessel':
-            # A bearer without effect: the instance knows no API keys and
+            # A bearer without effect: the instance does not support API keys and
             # asks for the session (upstream without PR #48).
             message = ('Diese NebenkostenFix-Instanz unterstützt keine Zugriffsschlüssel (Version zu alt). '
                        'Nutze stattdessen NKF_USERNAME und NKF_PASSWORD.')

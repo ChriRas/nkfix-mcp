@@ -6,10 +6,10 @@ NebenkostenFix. That is why everything is checked before creating
 (duplicate, implausible reading), and if there are concerns, the human decides:
 
 - If the client can ask (MCP elicitation, e.g. Claude Code), the server asks
-  the human directly. Their no stands, even if the model sends an approval
+  the human directly. Their 'no' is final, even if the model sends an approval
   code along.
 - Otherwise "not saved" comes back with the concerns and an approval code.
-  The model is to ask the human and, only with their consent, repeat the same
+  The model must ask the human and, only with their consent, repeat the same
   call with ``approval_code=<code>``. The code matches exactly these arguments
   (for a receipt also its content) and these concerns (review S4-2): it cannot
   be set in advance, and if a value changes or a concern is added before the
@@ -50,7 +50,7 @@ from nkfix_mcp.tools.read import PaymentType, PropertyId, TenantId
 
 CREATE_ONLY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False,
                               open_world_hint=False)
-# According to the Claude Code docs (27.10.2026): asks on every call, even
+# According to the Claude Code docs (2026-10-27): asks on every call, even
 # if the human has approved the tool in general.
 REQUIRE_USER_INTERACTION = {'anthropic/requiresUserInteraction': True}
 

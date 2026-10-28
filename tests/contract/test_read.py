@@ -122,7 +122,7 @@ async def test_every_read_tool_runs_with_read_key(instance):
         assert details['line_items'] and details['balance'] is not None
 
 
-async def test_field_guard_check(instance):
+async def test_field_guard_check_tools(instance):
     house = await sample_property(instance)
     async with NkfClient(Config.from_env(instance.env('sitzung'))) as nkf:
         anna = next(m['id'] for m in await nkf.get('/api/tenants') if m['name'] == 'Anna Beispiel')

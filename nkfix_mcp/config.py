@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 KEY_PREFIX = 'nkf_'
 # .mcp.json often contains "${NKF_API_KEY}". If the variable is not set,
-# Claude Code passes the text through unchanged (docs, as of 27.10.2026).
+# Claude Code passes the text through unchanged (docs, as of 2026-10-27).
 # Something like that must never reach the instance as an API key.
 _UNRESOLVED = re.compile(r'\$\{[^}]*\}')
 _YES = frozenset({'1', 'ja', 'true', 'yes', 'on'})
@@ -36,7 +36,7 @@ class Config:
     username: str | None = None
     password: str | None = field(default=None, repr=False)
     receipt_dir: Path | None = None
-    confirm_on_record: bool = True
+    prompt_on_record: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
@@ -78,9 +78,9 @@ class Config:
             if not receipt_dir.is_dir():
                 raise ConfigError(f'NKF_RECEIPT_DIR ist kein vorhandener Ordner: {receipt_dir}')
 
-        skip_confirmation = (values['NKF_NO_RECORD_PROMPT'] or '').lower() in _YES
+        skip_prompt = (values['NKF_NO_RECORD_PROMPT'] or '').lower() in _YES
         return cls(url=url.rstrip('/'), api_key=api_key, username=username, password=password,
-                   receipt_dir=receipt_dir, confirm_on_record=not skip_confirmation)
+                   receipt_dir=receipt_dir, prompt_on_record=not skip_prompt)
 
     @property
     def auth_method(self) -> AuthMethod:
