@@ -1,4 +1,4 @@
-"""Prompts: ready-made workflows the human starts as a command, e.g. /nkfix:prepare_year_end 1 2025.
+"""Prompts: ready-made workflows the human starts as a command, e.g. /mcp__nkfix__prepare_year_end 1 2025.
 
 A prompt only returns an instruction; the assistant then fetches the data
 with the tools. A prompt therefore never calls the API itself. A missing

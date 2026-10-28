@@ -1,6 +1,6 @@
 """Prompts: ready-made workflows the human starts as a command.
 
-In Claude Code a prompt appears as ``/nkfix:<name>``; the arguments follow
+In Claude Code a prompt appears as ``/mcp__nkfix__<name>``; the arguments follow
 separated by spaces, each a single word. A prompt only returns an
 instruction for the assistant, which then fetches the data with the tools;
 the prompt itself never calls the API, so it is always current and cannot
