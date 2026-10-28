@@ -194,6 +194,24 @@ uv pip install -e . -r requirements-dev.txt
 .venv/bin/ruff check .
 ```
 
+```bash
+.venv/bin/ruff format --check .
+```
+
+```bash
+.venv/bin/mypy
+```
+
+Einmal `pre-commit install`, dann laufen ruff und mypy vor jedem Commit. Ein Hook lehnt Commit-Messages mit
+`Co-Authored-By:` oder „Generated with Claude Code“ ab. Die CI (`.github/workflows/ci.yml`) prüft dasselbe und
+lässt die Einheitstests laufen.
+
+```bash
+.venv/bin/pre-commit install
+```
+
+Nach einem Pull, der das Paket verschiebt oder umbenennt, einmal neu installieren (`uv pip install -e .`).
+
 **Vertragstests** gegen eine echte Instanz:
 - Sie starten NebenkostenFix aus einem Checkout mit frischem Datenordner auf einem freien Port.
 - Sie legen die Beispielimmobilie und zwei Zugriffsschlüssel an. Es sind nur Fantasiedaten im Spiel.

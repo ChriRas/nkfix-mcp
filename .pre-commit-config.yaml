@@ -1,0 +1,30 @@
+# Install once with: pre-commit install
+# The hooks use the pinned tools: ruff from requirements-dev.txt, mypy from the project's .venv
+# (it needs the project's dependencies to check the types).
+default_install_hook_types: [pre-commit, commit-msg]
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        language: python
+        additional_dependencies: ['ruff==0.17.3']
+        entry: ruff check --force-exclude
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        language: python
+        additional_dependencies: ['ruff==0.17.3']
+        entry: ruff format --check --force-exclude
+        types_or: [python, pyi]
+      - id: mypy
+        name: mypy --strict
+        language: system
+        entry: .venv/bin/mypy
+        pass_filenames: false
+        types: [python]
+      - id: no-ai-attribution
+        name: no Co-Authored-By or "Generated with Claude Code" in the commit message
+        language: pygrep
+        entry: '(?i)^co-authored-by:|generated with claude code'
+        stages: [commit-msg]

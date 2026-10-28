@@ -1,0 +1,33 @@
+# Lint, types and unit tests on every push and pull request.
+# The contract tests need a NebenkostenFix checkout (NKF_SOURCE) and run locally only.
+# Actions are pinned to a commit; the comment names the release.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -r requirements.txt -r requirements-dev.txt -e .
+      - name: ruff check
+        run: .venv/bin/ruff check .
+      - name: ruff format
+        run: .venv/bin/ruff format --check .
+      - name: mypy
+        run: .venv/bin/mypy
+      - name: Unit tests
+        run: .venv/bin/python -m pytest tests/unit
