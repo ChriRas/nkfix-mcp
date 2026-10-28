@@ -22,7 +22,7 @@ R = TypeVar('R')
 # them; they do not replace a permission prompt.
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
-T = TypeVar('T')
+T = TypeVar('T', bound=Callable[..., Any])
 
 
 def tool(

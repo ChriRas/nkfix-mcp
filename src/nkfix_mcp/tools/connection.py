@@ -109,7 +109,9 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
             auth_method='offen' if open_mode else config.auth_method,
             account=me.get('username'),
             api_key=(
-                ApiKeyInfo(name=api_key.get('name'), scope=api_key.get('umfang')) if isinstance(api_key, dict) else None
+                ApiKeyInfo.model_validate({'name': api_key.get('name'), 'scope': api_key.get('umfang')})
+                if isinstance(api_key, dict)
+                else None
             ),
             version=version,
             can_record=scope != 'lesen',

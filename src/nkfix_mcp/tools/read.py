@@ -279,7 +279,7 @@ def _tenant(raw: dict[str, Any], apartment_to_property: dict[int, int]) -> Tenan
     return Tenant(
         id=raw['id'],
         name=raw['name'],
-        property_id=apartment_to_property.get(raw.get('apartment_id')),
+        property_id=apartment_to_property.get(raw['apartment_id']) if raw.get('apartment_id') is not None else None,
         property=raw.get('property_name'),
         apartment_id=raw.get('apartment_id'),
         apartment=raw.get('apartment_name'),

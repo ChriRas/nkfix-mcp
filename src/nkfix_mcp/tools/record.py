@@ -92,7 +92,9 @@ def _parse_amount(value: Any) -> Decimal:
         number = Decimal(text)
     except InvalidOperation as error:
         raise ValueError(f'Kein Betrag: {value!r}') from error
-    if not number.is_finite() or number.as_tuple().exponent < -MAX_DECIMALS:
+    exponent = number.as_tuple().exponent
+    # 'n', 'N' or 'F' instead of a number: NaN or infinity.
+    if not isinstance(exponent, int) or exponent < -MAX_DECIMALS:
         raise ValueError(AMBIGUOUS_AMOUNT.format(value=value))
     return number.quantize(CENT)
 
@@ -151,10 +153,13 @@ class RecordResult(BaseModel):
 
 
 class Decision(BaseModel):
-    save: bool
+    """Save: the human agreed, or there was nothing to agree to.
+
+    Not saving is no Decision but the ``RecordResult`` that goes back to the model.
+    """
+
     despite_concerns: bool = False
     concerns: list[str] = []
-    response: RecordResult | None = None
 
 
 def _can_elicit(ctx: Context) -> bool:
@@ -175,35 +180,27 @@ def _ask(
     return Elicit(f'{summary}\n\nBedenken:\n{bullets}\n\nTrotzdem speichern?', ConfirmationPrompt)
 
 
-def _decide(decision: ElicitationResult[ConfirmationPrompt], approval_code: str | None) -> Decision:
+def _decide(decision: ElicitationResult[ConfirmationPrompt], approval_code: str | None) -> Decision | RecordResult:
     if decision.action != 'accept':
-        return Decision(
-            save=False,
-            response=RecordResult(
-                saved=False,
-                id=None,
-                concerns=[],
-                note='Nicht gespeichert: Der Mensch hat abgelehnt oder abgebrochen. Er kann den Eintrag selbst in '
-                'NebenkostenFix anlegen.',
-            ),
+        return RecordResult(
+            saved=False,
+            id=None,
+            concerns=[],
+            note='Nicht gespeichert: Der Mensch hat abgelehnt oder abgebrochen. Er kann den Eintrag selbst in '
+            'NebenkostenFix anlegen.',
         )
     data = decision.data
     if isinstance(data, ConfirmationPrompt):
         if data.save:
-            return Decision(save=True, despite_concerns=True)
-        return Decision(
-            save=False,
-            response=RecordResult(
-                saved=False, id=None, concerns=[], note='Nicht gespeichert: Der Mensch hat abgelehnt.'
-            ),
-        )
+            return Decision(despite_concerns=True)
+        return RecordResult(saved=False, id=None, concerns=[], note='Nicht gespeichert: Der Mensch hat abgelehnt.')
     if not data.concerns:
-        return Decision(save=True)
+        return Decision()
     # As bytes: compare_digest raises on str with umlauts ("bestätigt").
     if approval_code is not None and hmac.compare_digest(
         approval_code.strip().lower().encode(), data.approval_code.encode()
     ):
-        return Decision(save=True, despite_concerns=True, concerns=data.concerns)
+        return Decision(despite_concerns=True, concerns=data.concerns)
     note = (
         f'Zeig dem Menschen die Bedenken und frag, ob trotzdem gespeichert werden soll. Nur wenn er '
         f"zustimmt: dasselbe Werkzeug mit denselben Werten und approval_code='{data.approval_code}' erneut "
@@ -217,12 +214,7 @@ def _decide(decision: ElicitationResult[ConfirmationPrompt], approval_code: str 
         )
     else:
         note = f'Nicht gespeichert. {note}'
-    return Decision(
-        save=False,
-        response=RecordResult(
-            saved=False, id=None, concerns=data.concerns, note=note, approval_code=data.approval_code
-        ),
-    )
+    return RecordResult(saved=False, id=None, concerns=data.concerns, note=note, approval_code=data.approval_code)
 
 
 def _saved(response: Any, decision: Decision) -> RecordResult:
@@ -421,8 +413,8 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         Bestehendes). Gibt es dieselbe Zahlung schon, wird vorher nachgefragt. Eine Nachzahlung gehört an ihre
         Abrechnung (statement_id); fehlt sie oder weicht der Betrag vom offenen Betrag ab, wird nachgefragt."""
         result = _decide(decision, approval_code)
-        if not result.save:
-            return result.response
+        if isinstance(result, RecordResult):
+            return result
         return _saved(
             await nkf.post(
                 '/api/payments',
@@ -472,13 +464,13 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         for new, field, name in ((value, 'value', 'Stand'), (value_off_peak, 'value_nt', 'NT-Stand')):
             earlier = previous.get(field) if previous else None
             later = following.get(field) if following else None
-            if new is not None and earlier is not None and new < earlier:
+            if new is not None and previous is not None and earlier is not None and new < earlier:
                 concerns.append(
                     f'Der {name} {_format_reading(new)} ist kleiner als der vorige vom '
                     f'{_format_date(previous["reading_date"])} ({_format_reading(earlier)}). Ein Zähler '
                     'läuft nicht rückwärts.'
                 )
-            if new is not None and later is not None and new > later:
+            if new is not None and following is not None and later is not None and new > later:
                 concerns.append(
                     f'Der {name} {_format_reading(new)} ist größer als der folgende vom '
                     f'{_format_date(following["reading_date"])} ({_format_reading(later)}).'
@@ -515,8 +507,8 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         wird geprüft, ob er zu den bisherigen Ständen passt; bei Bedenken wird nachgefragt. Zähler selbst legt
         nur der Mensch an: gibt es keinen passenden Zähler, sag das, statt etwas anderes zu erfassen."""
         result = _decide(decision, approval_code)
-        if not result.save:
-            return result.response
+        if isinstance(result, RecordResult):
+            return result
         payload = _without_none(
             {
                 'meter_id': meter_id,
@@ -702,8 +694,8 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         Kostenart, gleichem Betrag, Zeitraum und Wohnung, wird vorher nachgefragt. Den Inhalt eines Belegs liest du
         selbst; NebenkostenFix hat keine Texterkennung."""
         result = _decide(decision, approval_code)
-        if not result.save:
-            return result.response
+        if isinstance(result, RecordResult):
+            return result
         receipt = _read_receipt(receipt_path) if receipt_path else None
         payload = _without_none(
             {
@@ -768,8 +760,8 @@ def register(server: MCPServer, nkf: NkfClient, require_interaction: bool = True
         hoch (schreibt, ändert nichts Bestehendes). Danach legst du jede Rechnung darauf mit record_invoice und
         invoice_document_id an."""
         result = _decide(decision, approval_code)
-        if not result.save:
-            return result.response
+        if isinstance(result, RecordResult):
+            return result
         receipt = _read_receipt(receipt_path)
         response = await nkf.post(
             '/api/invoice_documents',

@@ -37,6 +37,13 @@ markers = [
     "contract: contract test against a real NebenkostenFix instance (needs NKF_SOURCE)",
 ]
 
+[tool.mypy]
+# The package is checked strictly; the tests are not (fixtures and parametrized
+# arguments stay untyped, see the ruff ANN exemption for tests).
+strict = true
+files = ["src"]
+python_version = "3.11"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120
