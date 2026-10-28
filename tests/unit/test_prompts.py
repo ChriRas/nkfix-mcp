@@ -139,6 +139,13 @@ async def test_prepare_year_end_takes_the_period_from_the_billing_year_not_the_c
 async def test_prepare_year_end_reviews_an_existing_statement_instead_of_prechecking_it():
     # precheck_statement only reports the overlap with the existing statement and hides what is missing.
     instruction = await text('prepare_year_end', {'property_id': '1', 'year': '2025'})
+    step1 = next(line for line in instruction.splitlines() if line.startswith('1.'))
+    assert 'Mieter' in step1
     step5 = next(line for line in instruction.splitlines() if line.startswith('5.'))
     assert step5.index('statement_id') < step5.index('get_statement') < step5.index('precheck_statement')
-    assert 'delivered_at' in step5
+    for field in ('line_items', 'outdated', 'delivered_at'):
+        assert field in step5
+    # Only a tenant without a statement is prechecked, not one whose statement is undelivered.
+    assert step5.index('keine statement_id') < step5.index('precheck_statement')
+    # A cost category without invoices is step 3's finding, not a gap in the statement.
+    assert 'für die es Rechnungen gibt' in step5

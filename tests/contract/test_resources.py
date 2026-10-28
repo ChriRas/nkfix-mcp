@@ -17,7 +17,13 @@ async def test_overview_shows_the_example_property_with_its_tenants_and_statemen
     assert f'## {house["name"]} (Immobilie {house["id"]})' in overview
     for tenant in tenants:
         assert f'{tenant["name"]} (Mieter {tenant["id"]})' in overview
-    open_statements = [s for s in statements if s['payment_status'] not in ('beglichen', 'ausgeglichen')]
+    open_statements = [
+        s
+        for s in statements
+        if s['payment_status'] not in ('beglichen', 'ausgeglichen')
+        or not s['delivered_at']
+        or s['outstanding_amount'] not in (None, '0.00')
+    ]
     for statement in open_statements:
         assert f'Abrechnung {statement["id"]}: ' in overview
     assert '## Fristen der nächsten 90 Tage' in overview

@@ -66,7 +66,8 @@ def _year_end_steps(property_id: str, year: str, may_record: bool) -> str:
     return (
         f'Bereite den Jahresabschluss für die Immobilie {property_id}, Abrechnungsjahr {year}, in NebenkostenFix vor. '
         'Ändere nichts. Geh so vor:\n'
-        f'1. get_billing_year_status für Immobilie {property_id} und Jahr {year}: Kostenarten, Fristen, Zustand.\n'
+        f'1. get_billing_year_status für Immobilie {property_id} und Jahr {year}: Kostenarten, Mieter, Fristen, '
+        'Zustand.\n'
         f'2. get_data_quality für Immobilie {property_id}: veraltete oder fehlende Zählerstände.\n'
         f'3. list_invoices für Immobilie {property_id}, ohne year (year filtert nach Kalenderjahr, das '
         'Abrechnungsjahr kann z. B. am 01.07. beginnen); nimm die Rechnungen, deren Zeitraum den '
@@ -75,11 +76,12 @@ def _year_end_steps(property_id: str, year: str, may_record: bool) -> str:
         '4. Zählerstände zum Ende des Abrechnungszeitraums: Schritt 1 zeigt je Zähler cutoff_ok; für einen '
         'Zähler ohne passenden Stand zeigt list_meters mit meter_id seine letzten Stände.\n'
         '5. Für jeden Mieter aus Schritt 1: Hat er eine statement_id, gibt es die Abrechnung schon. Prüf sie mit '
-        'get_statement: Fehlen Kostenarten aus Schritt 1, ist sie veraltet, ist sie zugestellt (delivered_at)? '
-        'Sonst precheck_statement mit seinem Zeitraum aus Schritt 1.\n'
+        'get_statement: Fehlen in line_items Kostenarten aus Schritt 1, für die es Rechnungen gibt? Ist sie '
+        'veraltet (outdated), ist sie zugestellt (delivered_at)? Hat er keine statement_id: precheck_statement '
+        'mit seinem Zeitraum aus Schritt 1.\n'
         '6. list_deadlines: Welche Fristen laufen?\n\n'
-        'Fasse am Ende kurz zusammen: 1. was fehlt, 2. was auffällt, 3. welche Fristen bis wann laufen. Erstellen '
-        f'kann der Mensch die Abrechnung danach selbst in NebenkostenFix. {closing}'
+        'Fasse am Ende kurz zusammen: 1. was fehlt, 2. was auffällt, 3. welche Fristen bis wann laufen. Erstellen oder '
+        f'neu erstellen kann der Mensch die Abrechnung danach selbst in NebenkostenFix. {closing}'
     )
 
 
@@ -123,8 +125,8 @@ def register(server: MCPServer, may_record: bool) -> None:
     @server.prompt(
         name='prepare_year_end',
         title='Jahresabschluss vorbereiten',
-        description='Geht den Stand eines Abrechnungsjahrs durch: Rechnungen, Zählerstände, Vorprüfung je Mieter, '
-        'Fristen. Am Ende steht, was fehlt und was auffällt. Ändert nichts.',
+        description='Geht den Stand eines Abrechnungsjahrs durch: Rechnungen, Zählerstände, Abrechnung oder '
+        'Vorprüfung je Mieter, Fristen. Am Ende steht, was fehlt und was auffällt. Ändert nichts.',
     )
     def prepare_year_end(
         property_id: Annotated[str, Field(description='ID der Immobilie, z. B. 1 (siehe list_properties)')] = '',

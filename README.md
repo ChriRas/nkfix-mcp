@@ -122,7 +122,7 @@ ein einzelnes Wort. Fehlt eins, fragt der Assistent nach.
 
 | Befehl | Was er tut |
 |---|---|
-| `/mcp__nkfix__prepare_year_end 1 2025` | Jahresabschluss vorbereiten: geht Rechnungen, Zählerstände, Vorprüfung je Mieter und Fristen durch und sagt, was fehlt und was auffällt. Ändert nichts. |
+| `/mcp__nkfix__prepare_year_end 1 2025` | Jahresabschluss vorbereiten: geht Rechnungen, Zählerstände, Abrechnung oder Vorprüfung je Mieter und Fristen durch und sagt, was fehlt und was auffällt. Ändert nichts. |
 | `/mcp__nkfix__check_hausgeld_statement` | Prüft eine angehängte Hausgeld-Einzelabrechnung der WEG und fragt danach, was erfasst werden soll. |
 | `/mcp__nkfix__record_receipt ~/Belege/wasser-2025.pdf` | Liest einen Beleg, prüft auf Dubletten und erfasst die Rechnung nach deiner Zustimmung. Nur mit einem Schlüssel, der erfassen darf. |
 

@@ -35,8 +35,9 @@ Abrechnungen vorprüfen, ohne etwas zu verändern.
 - IDs (Immobilie, Mieter, Kostenart, Zähler) ermittelst du über die Lese-Werkzeuge, rate sie nie.
 - Geldbeträge sind Strings mit Punkt und zwei Nachkommastellen ("1234.56"), in Euro.
 - Ändern oder löschen kann dieser Server nichts; Korrekturen macht der Mensch in NebenkostenFix.
-- Einen Überblick über Immobilien, Mieter (mit IDs), offene Abrechnungen und nahe Fristen gibt die Resource
-  nkfix://overview; du liest sie mit ReadMcpResourceTool (Server nkfix), wenn dein Client das anbietet.
+- Einen Überblick über Immobilien, Mieter (mit IDs), Abrechnungen, die noch offen
+  oder nicht zugestellt sind, und nahe Fristen gibt die Resource nkfix://overview; du liest sie
+  mit ReadMcpResourceTool (Server nkfix), wenn dein Client das anbietet.
 """
 
 RECORD_INSTRUCTIONS = """\

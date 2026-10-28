@@ -84,8 +84,8 @@ def _statement_line(s: Statement) -> str:
     if outstanding is not None and outstanding < 0:
         # Negative: a credit the landlord still pays out (zahlungsstand.py upstream).
         parts.append(f'{format_money(-outstanding)} € an den Mieter auszuzahlen')
-    elif outstanding:
-        # Zero says nothing the payment status does not already say.
+    elif outstanding is not None and (outstanding or s.payment_status not in SETTLED):
+        # Zero only repeats a settled status; with any other status it is worth seeing.
         parts.append(f'{format_money(outstanding)} € offen')
     parts.append(f'zugestellt am {_day(s.delivered_at)}' if s.delivered_at else 'nicht zugestellt')
     return '- ' + ', '.join(parts)
@@ -112,8 +112,9 @@ def _property_section(p: Property, tenants: list[Tenant], statements: list[State
 
 
 def _done(s: Statement) -> bool:
-    # Settled is not enough: the deadline is only kept once the statement reaches the tenant.
-    return s.payment_status in SETTLED and s.delivered_at is not None
+    # Settled is not enough: the deadline is only kept once the statement reaches the tenant,
+    # and a credit still to pay out is money that is open.
+    return s.payment_status in SETTLED and s.delivered_at is not None and not as_amount(s.outstanding_amount)
 
 
 def _done_line(count: int, further: bool) -> str:

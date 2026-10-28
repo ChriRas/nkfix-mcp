@@ -281,3 +281,46 @@ async def test_settled_but_undelivered_statement_stays_visible():
     assert '0.00 €' not in overview
     assert 'Abrechnung 7' not in overview
     assert '1 weitere Abrechnung ist beglichen und zugestellt.' in overview
+
+
+@pytest.mark.parametrize(
+    ('status', 'outstanding', 'delivered', 'shown'),
+    [
+        ('beglichen', '0.00', '2026-02-03', None),
+        ('ausgeglichen', None, '2026-02-03', None),
+        ('ausgeglichen', '-5.00', '2026-02-03', 'ausgeglichen, 5.00 € an den Mieter auszuzahlen, zugestellt am'),
+        ('offen', '50.00', '2026-02-03', 'offen, 50.00 € offen, zugestellt am 03.02.2026'),
+        ('offen', '0.00', None, 'offen, 0.00 € offen, nicht zugestellt'),
+        (None, '0.00', '2026-02-03', 'ohne Zahlungsstand, 0.00 € offen, zugestellt am'),
+    ],
+)
+async def test_only_settled_delivered_statements_without_money_left_are_counted_as_done(
+    status, outstanding, delivered, shown
+):
+    fake = sample_data()
+    fake.json('GET', '/api/billing/reports', [statement(4, status, outstanding, delivered=delivered)])
+    overview = await read(fake, 'nkfix://overview')
+    if shown is None:
+        assert 'Abrechnung 4' not in overview
+        assert '1 Abrechnung ist beglichen und zugestellt.' in overview
+    else:
+        assert f'Abrechnung 4: Erika Muster, 01.01.2025 bis 31.12.2025, {shown}' in overview
+        assert 'beglichen und zugestellt' not in overview
+
+
+async def test_count_of_done_statements_uses_the_plural():
+    done = [statement(i, 'beglichen', '0.00', delivered='2026-02-03') for i in (1, 2)]
+    fake = sample_data()
+    fake.json('GET', '/api/billing/reports', done)
+    assert '2 Abrechnungen sind beglichen und zugestellt.' in await read(fake, 'nkfix://overview')
+    fake.json('GET', '/api/billing/reports', [*done, statement(3, 'offen', '9.00')])
+    assert '2 weitere Abrechnungen sind beglichen und zugestellt.' in await read(fake, 'nkfix://overview')
+
+
+async def test_overview_description_and_instructions_name_undelivered_statements():
+    nkf = client(FakeNkf())
+    server = build_server(nkf, 'lesen')
+    async with nkf, Client(server) as mcp:
+        found = {str(r.uri): r for r in (await mcp.list_resources()).resources}
+    assert 'nicht zugestellt' in found['nkfix://overview'].description
+    assert 'nicht zugestellt' in server.instructions
