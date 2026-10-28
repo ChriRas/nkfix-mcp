@@ -38,7 +38,7 @@ def tenant(tenant_id: int, name: str, apartment_id: int = 10, **values) -> dict:
     }
 
 
-def statement(statement_id: int, status: str, outstanding: str) -> dict:
+def statement(statement_id: int, status: str | None, outstanding: str | None, delivered: str | None = None) -> dict:
     return {
         'id': statement_id,
         'tenant_id': 1,
@@ -50,7 +50,7 @@ def statement(statement_id: int, status: str, outstanding: str) -> dict:
         'end_date': '2025-12-31',
         'created_at': '27.10.2026',
         'veraltet': False,
-        'zugestellt_am': None,
+        'zugestellt_am': delivered,
         'offen_betrag': outstanding,
         'zahlungsstand': status,
     }
@@ -96,7 +96,7 @@ def sample_data(tenants: list[dict] | None = None) -> FakeNkf:
     fake.json(
         'GET',
         '/api/billing/reports',
-        [statement(9, 'offen', '108.32'), {**statement(8, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}],
+        [statement(9, 'offen', '108.32'), statement(8, 'beglichen', '0.00', delivered='2026-02-03')],
     )
     fake.json(
         'GET',
@@ -209,8 +209,8 @@ async def test_statement_line_shows_delivery_date_credit_and_missing_status_in_w
         'GET',
         '/api/billing/reports',
         [
-            {**statement(5, 'offen', '-120.00'), 'zugestellt_am': '2026-02-03'},
-            {**statement(6, None, None)},
+            statement(5, 'offen', '-120.00', delivered='2026-02-03'),
+            statement(6, None, None),
         ],
     )
     overview = await read(fake, 'nkfix://overview')
@@ -261,7 +261,7 @@ async def test_deadlines_description_names_all_kinds_of_upstream():
 
 async def test_settled_statements_are_not_called_further_ones_when_none_is_open():
     fake = sample_data()
-    fake.json('GET', '/api/billing/reports', [{**statement(8, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}])
+    fake.json('GET', '/api/billing/reports', [statement(8, 'beglichen', '0.00', delivered='2026-02-03')])
     overview = await read(fake, 'nkfix://overview')
     assert '1 Abrechnung ist beglichen und zugestellt.' in overview
     assert 'weitere' not in overview
@@ -273,7 +273,7 @@ async def test_settled_but_undelivered_statement_stays_visible():
     fake.json(
         'GET',
         '/api/billing/reports',
-        [statement(8, 'beglichen', '0.00'), {**statement(7, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}],
+        [statement(8, 'beglichen', '0.00'), statement(7, 'beglichen', '0.00', delivered='2026-02-03')],
     )
     overview = await read(fake, 'nkfix://overview')
     assert 'Abrechnungen mit offenem Punkt:' in overview
