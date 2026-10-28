@@ -6,10 +6,11 @@ instruction for the assistant, which then fetches the data with the tools;
 the prompt itself never calls the API, so it is always current and cannot
 fail on the instance.
 
-The SDK turns any exception in a prompt into "Internal server error", and
-it does the same for a missing required argument. That is why all
-arguments are optional and a bad value becomes an instruction to ask the
-human, never an exception.
+A missing required argument fails in the SDK before the prompt runs, and
+an exception inside a prompt reaches Claude Code as "Internal server error"
+(only an ``MCPError`` keeps its text). Neither gives the human a useful
+message. That is why all arguments are optional and a missing or bad value
+becomes an instruction to ask the human, never an exception.
 """
 
 from __future__ import annotations
@@ -67,10 +68,12 @@ def _year_end_steps(property_id: str, year: str, may_record: bool) -> str:
         'Ändere nichts. Geh so vor:\n'
         f'1. get_billing_year_status für Immobilie {property_id} und Jahr {year}: Kostenarten, Fristen, Zustand.\n'
         f'2. get_data_quality für Immobilie {property_id}: veraltete oder fehlende Zählerstände.\n'
-        f'3. list_invoices für Immobilie {property_id} und das Jahr: Fehlt für eine Kostenart eine Rechnung, oder '
-        'weicht ein Betrag stark vom Vorjahr ab?\n'
-        f'4. list_meters für Immobilie {property_id}: Gibt es zu jedem Zähler einen Stand zum Ende des '
-        'Abrechnungszeitraums?\n'
+        f'3. list_invoices für Immobilie {property_id}, ohne year (year filtert nach Kalenderjahr, das '
+        'Abrechnungsjahr kann z. B. am 01.07. beginnen); nimm die Rechnungen, deren Zeitraum den '
+        'Abrechnungszeitraum aus Schritt 1 berührt. Fehlt für eine Kostenart eine Rechnung, oder weicht ein '
+        'Betrag stark vom Vorjahr ab?\n'
+        '4. Zählerstände zum Ende des Abrechnungszeitraums: Schritt 1 zeigt je Zähler cutoff_ok; für einen '
+        'Zähler ohne passenden Stand zeigt list_meters mit meter_id seine letzten Stände.\n'
         '5. precheck_statement für jeden Mieter, der im Abrechnungszeitraum dort gewohnt hat (list_tenants), mit '
         'dem Zeitraum seines Abrechnungsjahrs.\n'
         '6. list_deadlines: Welche Fristen laufen?\n\n'

@@ -176,3 +176,80 @@ async def test_error_from_nebenkostenfix_arrives_as_german_text():
 
 async def test_instructions_mention_the_overview():
     assert 'nkfix://overview' in build_server(client(FakeNkf()), 'lesen').instructions
+
+
+def deadline(days: int, title: str, kind: str = 'eichfrist') -> dict:
+    return {'datum': (TODAY + timedelta(days=days)).isoformat(), 'art': kind, 'titel': title}
+
+
+async def test_overview_window_is_ninety_days_inclusive():
+    fake = sample_data().json('GET', '/api/fristen', {'termine': [deadline(90, 'Tag 90'), deadline(91, 'Tag 91')]})
+    overview = await read(fake, 'nkfix://overview')
+    assert 'Tag 90' in overview
+    assert 'Tag 91' not in overview
+
+
+async def test_without_deadlines_both_resources_say_so():
+    fake = sample_data().json('GET', '/api/fristen', {'termine': []})
+    assert overview_tail(await read(fake, 'nkfix://overview')).endswith('Keine.')
+    assert (await read(fake, 'nkfix://deadlines')).strip().endswith('Keine.')
+
+
+def overview_tail(overview: str) -> str:
+    return overview.strip().split('## Fristen der nächsten 90 Tage')[1].strip()
+
+
+async def test_statement_line_shows_delivery_date_credit_and_missing_status_in_words():
+    fake = sample_data()
+    fake.json(
+        'GET',
+        '/api/billing/reports',
+        [
+            {**statement(5, 'offen', '-120.00'), 'zugestellt_am': '2026-02-03'},
+            {**statement(6, None, None)},
+        ],
+    )
+    overview = await read(fake, 'nkfix://overview')
+    assert (
+        'Abrechnung 5: Erika Muster, 01.01.2025 bis 31.12.2025, offen, 120.00 € an den Mieter auszuzahlen, '
+        'zugestellt am 03.02.2026' in overview
+    )
+    assert 'Abrechnung 6: Erika Muster, 01.01.2025 bis 31.12.2025, ohne Zahlungsstand, nicht zugestellt' in overview
+
+
+async def test_names_cannot_break_the_markdown():
+    fake = sample_data()
+    fake.json(
+        'GET',
+        '/api/properties',
+        [
+            {
+                'id': 1,
+                'name': 'Haus *A*\n## Fake',
+                'abrechnungsjahr_beginn': '01.01.',
+                'is_standalone': False,
+                'ist_beispiel': False,
+            }
+        ],
+    )
+    overview = await read(fake, 'nkfix://overview')
+    assert '\n## Fake' not in overview
+    assert '## Haus \\*A\\* \\#\\# Fake (Immobilie 1)' in overview
+
+
+async def test_long_lists_of_open_statements_and_deadlines_are_shortened():
+    fake = sample_data()
+    fake.json('GET', '/api/billing/reports', [statement(i, 'offen', '1.00') for i in range(1, MAX_ITEMS + 3)])
+    fake.json('GET', '/api/fristen', {'termine': [deadline(1, f'Frist {i}') for i in range(MAX_ITEMS + 4)]})
+    overview = await read(fake, 'nkfix://overview')
+    assert '2 weitere Abrechnungen weggelassen' in overview
+    assert '4 weitere Fristen weggelassen' in overview
+    assert '4 weitere Fristen weggelassen' in await read(fake, 'nkfix://deadlines')
+
+
+async def test_deadlines_description_names_all_kinds_of_upstream():
+    nkf = client(FakeNkf())
+    async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
+        found = {str(r.uri): r for r in (await mcp.list_resources()).resources}
+    for kind in ('Abrechnungs', 'Einwendungs', 'Eich', 'Ablesung', 'Vorauszahlung', 'Mieterhöhung'):
+        assert kind in found['nkfix://deadlines'].description

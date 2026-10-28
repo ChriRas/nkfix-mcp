@@ -198,7 +198,8 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     async def list_deadlines(
         until: Annotated[IsoDate | None, Field(description='nur Termine bis zu diesem Datum (YYYY-MM-DD)')] = None,
     ) -> ItemList[Deadline]:
-        """Anstehende Termine und Fristen: Abrechnungsfristen, Einwendungsfristen, Eichfristen."""
+        """Anstehende Termine und Fristen: Abrechnungs-, Einwendungs- und Eichfristen, Ablesungen, neue
+        Vorauszahlungen und die früheste Mieterhöhung."""
         return truncate([t for t in await fetch_deadlines(nkf) if until is None or t.date <= until], MAX_ITEMS)
 
     @tool(server, 'Datenqualität', READ_ONLY)

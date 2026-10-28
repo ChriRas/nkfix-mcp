@@ -1,9 +1,10 @@
 """Prompts: ready-made workflows the human starts as a command, e.g. /nkfix:prepare_year_end 1 2025.
 
 A prompt only returns an instruction; the assistant then fetches the data
-with the tools. A prompt therefore never calls the API itself. The SDK
-turns any exception in a prompt into "Internal server error", so a bad or
-missing argument becomes an instruction to ask the human, not an error.
+with the tools. A prompt therefore never calls the API itself. A missing
+required argument fails in the SDK, and an exception in a prompt reaches
+Claude Code as "Internal server error", so a bad or missing argument
+becomes an instruction to ask the human, not an error.
 """
 
 import pytest
@@ -121,3 +122,15 @@ async def test_record_receipt_with_path_checks_duplicates_and_asks_before_record
 
 async def test_record_receipt_without_path_asks_for_the_receipt():
     assert 'Frag nach dem Beleg' in await text('record_receipt')
+
+
+async def test_prepare_year_end_takes_the_period_from_the_billing_year_not_the_calendar_year():
+    # A billing year can start on 01.07.; list_invoices(year=...) filters by calendar year.
+    instruction = await text('prepare_year_end', {'property_id': '2', 'year': '2025'})
+    step3 = next(line for line in instruction.splitlines() if line.startswith('3.'))
+    assert 'list_invoices' in step3
+    assert 'ohne year' in step3
+    assert 'Abrechnungszeitraum aus Schritt 1' in step3
+    step4 = next(line for line in instruction.splitlines() if line.startswith('4.'))
+    assert 'cutoff_ok' in step4
+    assert 'meter_id' in step4
