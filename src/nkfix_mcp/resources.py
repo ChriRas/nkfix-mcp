@@ -98,20 +98,28 @@ def _property_section(p: Property, tenants: list[Tenant], statements: list[State
     shown, note = _shortened(own, 'Mieter')
     lines += ['Mieter:', *(_tenant_line(t) for t in shown)] if shown else ['Keine Mieter.']
     lines += [note] if note else []
-    open_ones = [s for s in statements if s.property_id == p.id and s.payment_status not in SETTLED]
-    settled = sum(1 for s in statements if s.property_id == p.id and s.payment_status in SETTLED)
+    own_statements = [s for s in statements if s.property_id == p.id]
+    open_ones = [s for s in own_statements if not _done(s)]
+    done = len(own_statements) - len(open_ones)
     if open_ones:
         shown_statements, statements_note = _shortened(open_ones, 'Abrechnungen')
-        lines += ['', 'Offene Abrechnungen:', *(_statement_line(s) for s in shown_statements)]
+        lines += ['', 'Abrechnungen mit offenem Punkt:', *(_statement_line(s) for s in shown_statements)]
         lines += [statements_note] if statements_note else []
-    if settled:
-        lines += [
-            '',
-            f'{settled} weitere Abrechnung ist beglichen.'
-            if settled == 1
-            else f'{settled} weitere Abrechnungen sind beglichen.',
-        ]
+    if done:
+        lines += ['', _done_line(done, further=bool(open_ones))]
     return [*lines, '']
+
+
+def _done(s: Statement) -> bool:
+    # Settled is not enough: the deadline is only kept once the statement reaches the tenant.
+    return s.payment_status in SETTLED and s.delivered_at is not None
+
+
+def _done_line(count: int, further: bool) -> str:
+    noun = 'weitere Abrechnung' if further else 'Abrechnung'
+    if count == 1:
+        return f'1 {noun} ist beglichen und zugestellt.'
+    return f'{count} {noun}en sind beglichen und zugestellt.'
 
 
 def _deadline_line(d: Deadline, with_kind: bool) -> str:
@@ -157,8 +165,8 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         OVERVIEW_URI,
         name='overview',
         title='Überblick',
-        description='Immobilien mit ihren Mietern (samt IDs), offene Abrechnungen und die Fristen der nächsten '
-        f'{OVERVIEW_DAYS} Tage, als Markdown.',
+        description='Immobilien mit ihren Mietern (samt IDs), Abrechnungen, die noch offen oder nicht zugestellt '
+        f'sind, und die Fristen der nächsten {OVERVIEW_DAYS} Tage, als Markdown.',
         mime_type=MARKDOWN,
     )
     @_report_errors

@@ -128,8 +128,8 @@ ein einzelnes Wort. Fehlt eins, fragt der Assistent nach.
 
 Daten hängst du mit `@` an deine Nachricht:
 
-- `@nkfix:nkfix://overview`: Immobilien mit ihren Mietern (samt IDs), offene Abrechnungen und die Fristen
-  der nächsten 90 Tage
+- `@nkfix:nkfix://overview`: Immobilien mit ihren Mietern (samt IDs), Abrechnungen, die noch offen oder
+  nicht zugestellt sind, und die Fristen der nächsten 90 Tage
 - `@nkfix:nkfix://deadlines`: alle anstehenden Fristen
 
 Beides wird bei jedem Anhängen frisch aus NebenkostenFix gelesen. Schreib die volle Form: Auf `@nkfix`

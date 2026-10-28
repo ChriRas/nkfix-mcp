@@ -93,7 +93,11 @@ def sample_data(tenants: list[dict] | None = None) -> FakeNkf:
             tenant(3, 'Lisa Garten', apartment_id=20, apartment_name='Haus', last_billed_until=None),
         ],
     )
-    fake.json('GET', '/api/billing/reports', [statement(9, 'offen', '108.32'), statement(8, 'beglichen', '0.00')])
+    fake.json(
+        'GET',
+        '/api/billing/reports',
+        [statement(9, 'offen', '108.32'), {**statement(8, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}],
+    )
     fake.json(
         'GET',
         '/api/fristen',
@@ -143,7 +147,7 @@ async def test_overview_shows_properties_tenants_open_statements_and_near_deadli
         '- Abrechnung 9: Erika Muster, 01.01.2025 bis 31.12.2025, offen, 108.32 € offen, nicht zugestellt' in overview
     )
     assert 'Abrechnung 8' not in overview
-    assert '1 weitere Abrechnung ist beglichen.' in overview
+    assert '1 weitere Abrechnung ist beglichen und zugestellt.' in overview
     assert f'- {german(SOON)}: Ende der Abrechnungsfrist: Erika Muster' in overview
     assert 'Eichfrist W-1' not in overview
 
@@ -253,3 +257,27 @@ async def test_deadlines_description_names_all_kinds_of_upstream():
         found = {str(r.uri): r for r in (await mcp.list_resources()).resources}
     for kind in ('Abrechnungs', 'Einwendungs', 'Eich', 'Ablesung', 'Vorauszahlung', 'Mieterhöhung'):
         assert kind in found['nkfix://deadlines'].description
+
+
+async def test_settled_statements_are_not_called_further_ones_when_none_is_open():
+    fake = sample_data()
+    fake.json('GET', '/api/billing/reports', [{**statement(8, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}])
+    overview = await read(fake, 'nkfix://overview')
+    assert '1 Abrechnung ist beglichen und zugestellt.' in overview
+    assert 'weitere' not in overview
+
+
+async def test_settled_but_undelivered_statement_stays_visible():
+    # The deadline is only kept once the statement reaches the tenant (§ 556 Abs. 3 BGB).
+    fake = sample_data()
+    fake.json(
+        'GET',
+        '/api/billing/reports',
+        [statement(8, 'beglichen', '0.00'), {**statement(7, 'beglichen', '0.00'), 'zugestellt_am': '2026-02-03'}],
+    )
+    overview = await read(fake, 'nkfix://overview')
+    assert 'Abrechnungen mit offenem Punkt:' in overview
+    line = '- Abrechnung 8: Erika Muster, 01.01.2025 bis 31.12.2025, beglichen, 0.00 € offen, nicht zugestellt'
+    assert line in overview
+    assert 'Abrechnung 7' not in overview
+    assert '1 weitere Abrechnung ist beglichen und zugestellt.' in overview
