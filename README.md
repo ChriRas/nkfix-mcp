@@ -45,13 +45,12 @@ vorigen oder eine Rechnung mit derselben Nummer, legt der Server nichts an, sond
 
 ## Voraussetzungen
 
-- **Eine NebenkostenFix-Instanz mit Anmeldung.** Docker, NAS oder `python app.py`. Die Windows-App mit
-  eigenem Fenster geht nicht, sie lässt keine fremden Programme an ihre API.
+- **Eine NebenkostenFix-Instanz mit Anmeldung, empfohlen ab 0.19.0.** Docker, NAS oder `python app.py`. Die Windows-App
+  mit eigenem Fenster geht nicht, sie lässt keine fremden Programme an ihre API.
 - **Zugang auf einem von zwei Wegen:**
-  - **Zugriffsschlüssel (empfohlen).** Den gibt es in NebenkostenFix erst mit
-    [PR #48](https://github.com/Nerbry72/NebenkostenFix/pull/48), Stand Oktober 2026 noch nicht gemergt.
-  - **Benutzername und Passwort.** Geht mit jeder Version, das Passwort steht dann aber in der
-    Konfiguration.
+  - **Zugriffsschlüssel (empfohlen).** Den gibt es in NebenkostenFix seit Version 0.19.0.
+  - **Benutzername und Passwort.** Geht auch mit älteren Versionen, das Passwort steht dann aber in der
+    Konfiguration. Geprüft ist der Server gegen 0.19.0; bei einer älteren Instanz warnt `check_connection`.
 - **[uv](https://docs.astral.sh/uv/)** zum Installieren. Python 3.11 holt uv bei Bedarf selbst.
 
 ## Installation
@@ -82,7 +81,7 @@ gilt sofort nicht mehr.
 |---|---|
 | `NKF_URL` | Adresse der Instanz, z. B. `http://127.0.0.1:6060` oder `https://nkf.example.org` (Pflicht) |
 | `NKF_API_KEY` | Zugriffsschlüssel `nkf_…` (empfohlen) |
-| `NKF_USERNAME`, `NKF_PASSWORD` | Anmeldung per Sitzung, wenn deine Version keine Schlüssel kennt |
+| `NKF_USERNAME`, `NKF_PASSWORD` | Anmeldung per Sitzung, für Versionen vor 0.19.0 oder ohne Schlüssel |
 | `NKF_RECEIPT_DIR` | Wenn gesetzt, lädt der Server nur Belege aus diesem Ordner hoch (empfohlen) |
 | `NKF_NO_RECORD_PROMPT` | `1` schaltet die Nachfrage von Claude Code bei jedem Erfassen ab |
 
@@ -233,7 +232,7 @@ lässt die Einheitstests laufen.
 Nach einem Pull, der das Paket verschiebt oder umbenennt, einmal neu installieren (`uv pip install -e .`).
 
 **Vertragstests** gegen eine echte Instanz:
-- Sie starten NebenkostenFix aus einem Checkout mit frischem Datenordner auf einem freien Port.
+- Sie starten NebenkostenFix aus einem Checkout ab 0.19.0 mit frischem Datenordner auf einem freien Port.
 - Sie legen die Beispielimmobilie und zwei Zugriffsschlüssel an. Es sind nur Fantasiedaten im Spiel.
 - Ohne `NKF_SOURCE` werden sie übersprungen.
 

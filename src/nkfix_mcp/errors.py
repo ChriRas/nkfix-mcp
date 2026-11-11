@@ -58,7 +58,7 @@ def _unauthorized_message(response: httpx2.Response, code: Any, auth_method: Aut
         )
     if auth_method == 'api_key':
         # A bearer without effect: the instance does not support API keys and
-        # asks for the session (upstream without PR #48).
+        # asks for the session (NebenkostenFix before 0.19.0).
         return (
             'Diese NebenkostenFix-Instanz unterstützt keine Zugriffsschlüssel (Version zu alt). '
             'Nutze stattdessen NKF_USERNAME und NKF_PASSWORD.'

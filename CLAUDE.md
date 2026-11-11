@@ -17,7 +17,7 @@ MCP-Server für [NebenkostenFix](https://github.com/Nerbry72/NebenkostenFix). Ei
 - Arbeitsweise: zuerst eine Plan-Datei in `.research/plaene/`, dann Freigabe durch den Nutzer, dann ein eigener Branch. Tests zuerst (rot → grün), danach gemeinsamer Test in Claude Code. Danach Recap, Refactoring (höchstens 2–3 Punkte) und Review durch einen Agenten mit frischem Kontext.
 - Nichts pushen und nichts auf GitHub posten ohne Auftrag. Das Repo auf GitHub legt der Nutzer an bzw. gibt es frei.
 - `.research/` ist privat und wird nie committet.
-- **Keine echten Mieterdaten**, weder in Tests noch in Fixtures, Issues oder Commits. Nur Fantasiedaten. Docker auf :6060 gehört dem Nutzer: dort nichts anlegen und nichts ändern. Entwickelt und getestet wird gegen den Testserver auf :6061.
+- **Keine echten Mieterdaten**, weder in Tests noch in Fixtures, Issues oder Commits. Nur Fantasiedaten. Docker auf :6060 gehört dem Nutzer: dort nichts anlegen und nichts ändern. Entwickelt und getestet wird gegen den Testserver auf :6062 (mit Zugriffsschlüsseln).
 - Trainingswissen ist kein Faktenstand: Die API des MCP-SDK (`mcp` 2.x), Versionen und Claude-Konfiguration vor der Nutzung in der aktuellen Doku bzw. auf PyPI prüfen.
 - Werkzeuge: `rm` ist gesperrt, gelöscht wird mit Python `Path.unlink`. `curl` leitet ein Hook um, für HTTP-Proben stattdessen `python -c "import urllib.request …"`.
 - Befehle, die der Nutzer selbst ausführen soll, stehen unter `### ⚠ Deine Aktion` als ```bash-Block auf oberster Ebene.

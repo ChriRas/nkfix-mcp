@@ -11,8 +11,8 @@ one read key and one record key.
 - ``NKF_PYTHON``: Python with the dependencies of NebenkostenFix,
   default ``$NKF_SOURCE/.venv/bin/python``.
 
-If the instance does not support API keys (upstream without PR #48), the key tests
-are skipped; the session tests still run.
+If the instance does not support API keys (NebenkostenFix before 0.19.0), the key
+tests are skipped; the session tests still run.
 """
 
 from __future__ import annotations
