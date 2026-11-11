@@ -130,9 +130,17 @@ Daten hängst du mit `@` an deine Nachricht:
 - `@nkfix:nkfix://overview`: Immobilien mit ihren Mietern (samt IDs), Abrechnungen, die noch offen oder
   nicht zugestellt sind, und die Fristen der nächsten 90 Tage
 - `@nkfix:nkfix://deadlines`: alle anstehenden Fristen
+- `@nkfix:nkfix://statements/1`: eine Abrechnung mit Positionen, Ergebnis, Zahlungsstand, Zustellung und
+  Fristen
+- `@nkfix:nkfix://properties/1/years/2025`: der Stand eines Abrechnungsjahres einer Immobilie, mit
+  Kostenarten, Ablesungen zum Stichtag, Mietern und offenen Punkten
 
-Beides wird bei jedem Anhängen frisch aus NebenkostenFix gelesen. Schreib die volle Form: Auf `@nkfix`
-allein passen auch Claude-Sitzungen mit ähnlichem Namen.
+Die `1` ist die Nummer der Abrechnung bzw. der Immobilie. Alles wird bei jedem Anhängen frisch aus
+NebenkostenFix gelesen. Schreib die volle Form: Auf `@nkfix` allein passen auch Claude-Sitzungen mit
+ähnlichem Namen. Wählst du „Abrechnung“ oder „Jahresstand“ in der `@`-Auswahl aus, schlägt Claude Code die
+Nummern der Abrechnungen bzw. Immobilien vor, dazu das laufende Jahr und die zwei davor. Beim freien Tippen
+gibt es keine Vorschläge. Offene Abrechnungen und alle Immobilien zeigt dann `@nkfix:nkfix://overview`, alle
+Abrechnungen das Werkzeug `list_statements`.
 
 ## Einrichten in Claude Desktop
 

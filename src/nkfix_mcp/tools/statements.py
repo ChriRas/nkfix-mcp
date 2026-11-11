@@ -229,9 +229,70 @@ async def fetch_deadlines(nkf: NkfClient, statements: list[Statement] | None = N
     return deadlines
 
 
+async def fetch_statement(nkf: NkfClient, statement_id: int) -> StatementDetails:
+    """One statement in detail, as get_statement and the statement template show it."""
+    return _statement_details(statement_id, await nkf.get(f'/api/billing/reports/{statement_id}/details'))
+
+
 async def fetch_statements(nkf: NkfClient) -> list[Statement]:
     """All statements, as list_statements and the overview resource show them."""
     return [_statement(raw) for raw in await nkf.get('/api/billing/reports')]
+
+
+async def fetch_billing_year_status(nkf: NkfClient, property_id: int, year: int) -> dict[str, Any]:
+    """The state of one billing year, as get_billing_year_status and the year template show it."""
+    raw = await nkf.get('/api/jahresabrechnung', property_id=property_id, jahr=year)
+    return {
+        'property_id': raw.get('property_id'),
+        'property': raw.get('immobilie'),
+        'year': raw.get('jahr'),
+        'start_date': raw.get('von'),
+        'end_date': raw.get('bis'),
+        'statement_deadline': raw.get('frist_ende'),
+        'deadline_days': raw.get('frist_tage'),
+        'deadline_exceeded': raw.get('frist_ueberschritten'),
+        'cost_categories': [
+            {
+                'id': k.get('id'),
+                'name': k.get('name'),
+                'invoice_count': k.get('anzahl'),
+                'total': format_money(k.get('summe')),
+                'total_previous_year': format_money(k.get('summe_vorjahr')),
+                'change_percent': k.get('aenderung'),
+                'jump': k.get('sprung'),
+                'state': k.get('zustand'),
+            }
+            for k in raw.get('kostenarten') or []
+        ],
+        'readings': [
+            {
+                'meter_id': a.get('id'),
+                'number': a.get('nummer'),
+                'cost_category': a.get('kostenart'),
+                'apartment': a.get('wohnung'),
+                'last_reading_date': a.get('letzte'),
+                'cutoff_ok': a.get('stichtag_ok'),
+                'missing_change_readings': a.get('wechsel_fehlen'),
+            }
+            for a in raw.get('ablesungen') or []
+        ],
+        'tenants': [
+            {
+                'id': m.get('id'),
+                'name': m.get('name'),
+                'apartment': m.get('wohnung'),
+                'start_date': m.get('von'),
+                'end_date': m.get('bis'),
+                'statement_id': m.get('abrechnung_id'),
+                'delivered_at': m.get('zugestellt_am'),
+            }
+            for m in raw.get('mieter') or []
+        ],
+        'open_issues': [
+            {'type': p.get('art'), 'message': p.get('text'), 'action': p.get('tun')}
+            for p in raw.get('pruefstand') or []
+        ],
+    }
 
 
 def register(server: MCPServer, nkf: NkfClient) -> None:
@@ -283,58 +344,7 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         """Stand des Jahresabschlusses einer Immobilie: Kosten je Kostenart im Abrechnungsjahr (zeitanteilig) mit
         Vorjahr, fehlende Ablesungen, Mieter mit ihren Abrechnungen, offene Punkte (open_issues) und die
         Abrechnungsfrist."""
-        raw = await nkf.get('/api/jahresabrechnung', property_id=property_id, jahr=year)
-        return {
-            'property_id': raw.get('property_id'),
-            'property': raw.get('immobilie'),
-            'year': raw.get('jahr'),
-            'start_date': raw.get('von'),
-            'end_date': raw.get('bis'),
-            'statement_deadline': raw.get('frist_ende'),
-            'deadline_days': raw.get('frist_tage'),
-            'deadline_exceeded': raw.get('frist_ueberschritten'),
-            'cost_categories': [
-                {
-                    'id': k.get('id'),
-                    'name': k.get('name'),
-                    'invoice_count': k.get('anzahl'),
-                    'total': format_money(k.get('summe')),
-                    'total_previous_year': format_money(k.get('summe_vorjahr')),
-                    'change_percent': k.get('aenderung'),
-                    'jump': k.get('sprung'),
-                    'state': k.get('zustand'),
-                }
-                for k in raw.get('kostenarten') or []
-            ],
-            'readings': [
-                {
-                    'meter_id': a.get('id'),
-                    'number': a.get('nummer'),
-                    'cost_category': a.get('kostenart'),
-                    'apartment': a.get('wohnung'),
-                    'last_reading_date': a.get('letzte'),
-                    'cutoff_ok': a.get('stichtag_ok'),
-                    'missing_change_readings': a.get('wechsel_fehlen'),
-                }
-                for a in raw.get('ablesungen') or []
-            ],
-            'tenants': [
-                {
-                    'id': m.get('id'),
-                    'name': m.get('name'),
-                    'apartment': m.get('wohnung'),
-                    'start_date': m.get('von'),
-                    'end_date': m.get('bis'),
-                    'statement_id': m.get('abrechnung_id'),
-                    'delivered_at': m.get('zugestellt_am'),
-                }
-                for m in raw.get('mieter') or []
-            ],
-            'open_issues': [
-                {'type': p.get('art'), 'message': p.get('text'), 'action': p.get('tun')}
-                for p in raw.get('pruefstand') or []
-            ],
-        }
+        return await fetch_billing_year_status(nkf, property_id, year)
 
     @tool(server, 'Abrechnungsvorschläge', READ_ONLY)
     @report_errors
@@ -388,4 +398,4 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     ) -> StatementDetails:
         """Ergebnis einer Abrechnung: Kosten je Position mit Anteil des Mieters, Vorauszahlungen, Saldo,
         Anpassung der Vorauszahlung und Fristen."""
-        return _statement_details(statement_id, await nkf.get(f'/api/billing/reports/{statement_id}/details'))
+        return await fetch_statement(nkf, statement_id)
