@@ -74,7 +74,9 @@ class Statement(BaseModel):
     start_date: str | None
     end_date: str | None
     created_at: str | None
-    outdated: bool | None = Field(description='Daten haben sich seit der Abrechnung geändert')
+    outdated: bool | None = Field(
+        description='nach einem älteren Regelstand gerechnet, eine Korrektur könnte heute anders ausfallen'
+    )
     delivered_at: str | None
     outstanding_amount: str | None
     payment_status: str | None

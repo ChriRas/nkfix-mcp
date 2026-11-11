@@ -1017,3 +1017,13 @@ async def test_unknown_payment_type_is_rejected_by_the_schema():
     async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
         result = await mcp.call_tool('list_payments', {'payment_type': 'Mite'})
     assert result.is_error
+
+
+async def test_outdated_is_explained_as_an_older_rule_set():
+    """In NebenkostenFix, veraltet means an older rule set (NK-217), not changed data."""
+    nkf = client(FakeNkf())
+    async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
+        tools = {t.name: t for t in (await mcp.list_tools()).tools}
+    schema = str(tools['list_statements'].output_schema)
+    assert 'älteren Regelstand' in schema
+    assert 'Daten haben sich seit der Abrechnung geändert' not in schema
