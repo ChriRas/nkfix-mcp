@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,18 @@ async def test_connection_with_api_key(instance, access, scope):
     assert data['api_key'] == {'name': f'Vertrag {access}', 'scope': scope}
     assert data['version']
     assert data['can_record'] is (scope == 'erfassen')
+
+
+async def test_checked_instance_is_not_reported_as_too_old(instance):
+    """With a session, so the test also runs against an instance without API keys.
+
+    The format check keeps the warning alive: if upstream changed the version
+    format, the server would read no version and stay silent.
+    """
+    async with connected(instance, 'sitzung') as mcp:
+        data = await call(mcp, 'check_connection')
+    assert re.fullmatch(r'\d+\.\d+\.\d+', data['version']), data['version']
+    assert not [w for w in data['warnings'] if 'älter als' in w], data['warnings']
 
 
 async def test_connection_with_session(instance):

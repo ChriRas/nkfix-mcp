@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from mcp.server.mcpserver import MCPServer
@@ -13,6 +14,11 @@ from nkfix_mcp.config import AuthMethod
 from nkfix_mcp.tools import READ_ONLY, report_errors, tool
 
 Scope = Literal['lesen', 'erfassen']
+
+# Oldest NebenkostenFix this server is tested with; API keys exist from here on.
+MIN_VERSION = (0, 19, 0)
+MIN_VERSION_TEXT = '.'.join(str(part) for part in MIN_VERSION)
+_VERSION = re.compile(r'(\d+)\.(\d+)\.(\d+)', re.ASCII)
 
 
 class ApiKeyInfo(BaseModel):
@@ -57,6 +63,20 @@ async def _version(nkf: NkfClient) -> str | None:
     return version if isinstance(version, str) else None
 
 
+def outdated_version(version: str | None) -> str | None:
+    """``x.y.z`` of the version if it is below MIN_VERSION, otherwise None.
+
+    A suffix such as ``-rc1`` is ignored and never returned, so nothing else
+    from the answer of the instance reaches the warning. Anything unreadable
+    gives None: the version is information, not a gate.
+    """
+    match = _VERSION.match(version or '')
+    if match is None:
+        return None
+    numbers = tuple(int(part) for part in match.groups())
+    return match.group(0) if numbers < MIN_VERSION else None
+
+
 def register(server: MCPServer, nkf: NkfClient) -> None:
     config = nkf.config
 
@@ -97,6 +117,13 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
                 f'{config.url} ist unverschlüsselt (http) und nicht lokal: Zugangsdaten und '
                 'alle Daten gehen im Klartext durchs Netz. Nutze https, z. B. über einen Reverse '
                 'Proxy.'
+            )
+        outdated = outdated_version(version)
+        if outdated is not None:
+            warnings.append(
+                f'NebenkostenFix {outdated} ist älter als {MIN_VERSION_TEXT}. Mit dieser Version ist der '
+                'MCP-Server nicht getestet, einzelne Werkzeuge können fehlschlagen. Zugriffsschlüssel gibt '
+                f'es erst ab {MIN_VERSION_TEXT}. Aktualisiere NebenkostenFix, wenn möglich.'
             )
         scope = api_key.get('umfang') if isinstance(api_key, dict) else None
         if scope == 'lesen':

@@ -78,4 +78,4 @@ ME_RECORD = {
 ME_READ = {**ME_RECORD, 'schluessel': {'name': 'Nur lesen', 'umfang': 'lesen'}}
 ME_SESSION = {**ME_RECORD, 'schluessel': None}
 ME_OPEN = {'username': None, 'ohne_anmeldung': True, 'leerlauf_s': None, 'desktop': False}
-ABOUT = {'version': '0.17.1', 'weg': 'Docker'}
+ABOUT = {'version': '0.19.0', 'weg': 'Docker'}
