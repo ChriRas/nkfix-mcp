@@ -103,8 +103,13 @@ def sample_data(tenants: list[dict] | None = None) -> FakeNkf:
         '/api/fristen',
         {
             'termine': [
-                {'datum': SOON, 'art': 'abrechnungsfrist', 'titel': 'Ende der Abrechnungsfrist: Erika Muster'},
-                {'datum': LATER, 'art': 'eichfrist', 'titel': 'Eichfrist W-1'},
+                {
+                    'datum': SOON,
+                    'art': 'abrechnungsfrist',
+                    'titel': 'Ende der Abrechnungsfrist: Erika Muster',
+                    'uid': 'abrechnungsfrist-9@nebenkostenfix',
+                },
+                {'datum': LATER, 'art': 'eichfrist', 'titel': 'Eichfrist W-1', 'uid': 'eichfrist-5@nebenkostenfix'},
             ]
         },
     )
@@ -162,7 +167,10 @@ async def test_overview_shortens_long_lists_with_a_note():
 
 async def test_deadlines_lists_all_upcoming_deadlines():
     deadlines = await read(sample_data(), 'nkfix://deadlines')
-    assert f'- {german(SOON)}: Ende der Abrechnungsfrist: Erika Muster (abrechnungsfrist)' in deadlines
+    assert (
+        f'- {german(SOON)}: Ende der Abrechnungsfrist: Erika Muster '
+        '(Abrechnung 9, 01.01.2025 bis 31.12.2025) (abrechnungsfrist)'
+    ) in deadlines
     assert f'- {german(LATER)}: Eichfrist W-1 (eichfrist)' in deadlines
 
 
@@ -324,3 +332,38 @@ async def test_overview_description_and_instructions_name_undelivered_statements
         found = {str(r.uri): r for r in (await mcp.list_resources()).resources}
     assert 'nicht zugestellt' in found['nkfix://overview'].description
     assert 'nicht zugestellt' in server.instructions
+
+
+@pytest.mark.parametrize('uri', ['nkfix://deadlines', 'nkfix://overview'])
+async def test_statement_deadline_names_statement_and_period(uri):
+    text = await read(sample_data(), uri)
+    assert (
+        f'- {german(SOON)}: Ende der Abrechnungsfrist: Erika Muster (Abrechnung 9, 01.01.2025 bis 31.12.2025)' in text
+    )
+    assert 'Eichfrist W-1 (Abrechnung' not in text
+
+
+UID_77 = 'abrechnungsfrist-77@nebenkostenfix'
+
+
+async def test_statement_deadline_without_known_statement_names_only_the_id():
+    fake = sample_data().json(
+        'GET',
+        '/api/fristen',
+        {'termine': [{'datum': SOON, 'art': 'abrechnungsfrist', 'titel': 'X', 'uid': UID_77}]},
+    )
+    assert f'- {german(SOON)}: X (Abrechnung 77) (abrechnungsfrist)' in await read(fake, 'nkfix://deadlines')
+
+
+async def test_overview_fetches_the_statements_once():
+    fake = sample_data()
+    await read(fake, 'nkfix://overview')
+    assert len(fake.sent('GET', '/api/billing/reports')) == 1
+
+
+async def test_error_from_the_statements_reaches_the_deadlines_resource_as_german_text():
+    fake = sample_data().json('GET', '/api/billing/reports', {'error': 'kaputt'}, status=500)
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
+        with pytest.raises(MCPError, match='Serverfehler in NebenkostenFix'):
+            await mcp.read_resource('nkfix://deadlines')

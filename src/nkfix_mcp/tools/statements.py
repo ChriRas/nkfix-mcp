@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
@@ -34,6 +35,11 @@ class Deadline(BaseModel):
     date: str
     kind: str
     title: str
+    statement_id: int | None = Field(
+        default=None, description='ID der Abrechnung, zu der die Frist gehört, siehe Werkzeug get_statement'
+    )
+    period_start: str | None = Field(default=None, description='Beginn des Abrechnungszeitraums dieser Abrechnung')
+    period_end: str | None = Field(default=None, description='Ende des Abrechnungszeitraums dieser Abrechnung')
 
 
 class DataQuality(BaseModel):
@@ -181,10 +187,46 @@ def _new_advance_payment(raw: dict[str, Any] | None) -> dict[str, str | None] | 
     }
 
 
-async def fetch_deadlines(nkf: NkfClient) -> list[Deadline]:
-    """Upcoming deadlines, as list_deadlines and the resources show them."""
+# Deadlines of a statement; their uid in /api/fristen carries the statement id
+# (``<kind>-<id>@nebenkostenfix``, the uid of the calendar export).
+STATEMENT_DEADLINE_KINDS = frozenset({'abrechnungsfrist', 'einwendungsfrist'})
+
+
+def statement_id_of(kind: str, uid: object) -> int | None:
+    """The statement a deadline belongs to, read from its uid; None for other kinds or another shape."""
+    if kind not in STATEMENT_DEADLINE_KINDS or not isinstance(uid, str):
+        return None
+    match = re.fullmatch(rf'{re.escape(kind)}-(\d+)@nebenkostenfix', uid, re.ASCII)
+    return int(match[1]) if match else None
+
+
+async def fetch_deadlines(nkf: NkfClient, statements: list[Statement] | None = None) -> list[Deadline]:
+    """Upcoming deadlines, as list_deadlines and the resources show them.
+
+    Statement deadlines get the statement and its period. The statements are
+    fetched only if such a deadline is there and the caller has not passed them.
+    """
     events = (await nkf.get('/api/fristen')).get('termine') or []
-    return [Deadline(date=t['datum'], kind=t['art'], title=t['titel']) for t in events]
+    ids = [statement_id_of(t['art'], t.get('uid')) for t in events]
+    by_id: dict[int, Statement] = {}
+    if any(statement_id is not None for statement_id in ids):
+        if statements is None:
+            statements = await fetch_statements(nkf)
+        by_id = {s.id: s for s in statements}
+    deadlines = []
+    for event, statement_id in zip(events, ids, strict=True):
+        statement = by_id.get(statement_id) if statement_id is not None else None
+        deadlines.append(
+            Deadline(
+                date=event['datum'],
+                kind=event['art'],
+                title=event['titel'],
+                statement_id=statement_id,
+                period_start=statement.start_date if statement else None,
+                period_end=statement.end_date if statement else None,
+            )
+        )
+    return deadlines
 
 
 async def fetch_statements(nkf: NkfClient) -> list[Statement]:
@@ -199,7 +241,8 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
         until: Annotated[IsoDate | None, Field(description='nur Termine bis zu diesem Datum (YYYY-MM-DD)')] = None,
     ) -> ItemList[Deadline]:
         """Anstehende Termine und Fristen: Abrechnungs-, Einwendungs- und Eichfristen, Ablesungen, neue
-        Vorauszahlungen und die früheste Mieterhöhung."""
+        Vorauszahlungen und die früheste Mieterhöhung. Abrechnungs- und Einwendungsfristen nennen die Abrechnung
+        (statement_id) und ihren Abrechnungszeitraum."""
         return truncate([t for t in await fetch_deadlines(nkf) if until is None or t.date <= until], MAX_ITEMS)
 
     @tool(server, 'Datenqualität', READ_ONLY)

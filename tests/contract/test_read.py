@@ -5,6 +5,8 @@ from a response must be present in the real response. Otherwise, if upstream
 renames a field, ``.get()`` silently returns ``None``.
 """
 
+import re
+
 import pytest
 
 from nkfix_mcp.client import NkfClient
@@ -164,7 +166,7 @@ async def test_field_guard_nested(instance):
     assert {'type', 'severity', 'message'} <= set(quality['warnings'][0])
 
     events = (await raw(instance, '/api/fristen'))['termine']
-    assert {'datum', 'art', 'titel'} <= set(events[0])
+    assert {'datum', 'art', 'titel', 'uid'} <= set(events[0])
 
     report = (await raw(instance, '/api/billing/reports'))[0]['id']
     details = await raw(instance, f'/api/billing/reports/{report}/details')
@@ -286,3 +288,23 @@ async def test_field_guard_check_tools(instance):
     )
     assert {'art', 'text', 'tun'} <= set(year['pruefstand'][0])
     assert {'apartment_name', 'category_name', 'tenant_name'} <= set(quality['warnings'][0])
+
+
+async def test_statement_deadline_names_the_statement_and_its_period(instance):
+    """The uid of a statement deadline carries the statement id (calendar export,
+    no promised interface). If upstream changes it, this test fails instead of
+    the deadlines silently losing their statement."""
+    events = (await raw(instance, '/api/fristen'))['termine']
+    statement_events = [e for e in events if e['art'] in ('abrechnungsfrist', 'einwendungsfrist')]
+    assert statement_events, 'Die Beispielimmobilie sollte eine offene Abrechnungsfrist haben.'
+    for event in statement_events:
+        assert re.fullmatch(rf'{event["art"]}-\d+@nebenkostenfix', event['uid']), event['uid']
+
+    async with connected(instance, 'lesen') as mcp:
+        deadlines = (await call(mcp, 'list_deadlines'))['items']
+        statements = {s['id']: s for s in (await call(mcp, 'list_statements'))['items']}
+    named = [d for d in deadlines if d['kind'] in ('abrechnungsfrist', 'einwendungsfrist')]
+    assert len(named) == len(statement_events)
+    for deadline in named:
+        statement = statements[deadline['statement_id']]
+        assert (deadline['period_start'], deadline['period_end']) == (statement['start_date'], statement['end_date'])

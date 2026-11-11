@@ -124,8 +124,16 @@ def _done_line(count: int, further: bool) -> str:
     return f'{count} {noun}en sind beglichen und zugestellt.'
 
 
+def _statement_note(d: Deadline) -> str:
+    """Which statement a statement deadline belongs to, with its period when known."""
+    if d.statement_id is None:
+        return ''
+    period = f', {_day(d.period_start)} bis {_day(d.period_end)}' if d.period_start and d.period_end else ''
+    return f' (Abrechnung {d.statement_id}{period})'
+
+
 def _deadline_line(d: Deadline, with_kind: bool) -> str:
-    return f'- {_day(d.date)}: {_md(d.title)}' + (f' ({d.kind})' if with_kind else '')
+    return f'- {_day(d.date)}: {_md(d.title)}{_statement_note(d)}' + (f' ({d.kind})' if with_kind else '')
 
 
 def render_overview(
@@ -173,13 +181,10 @@ def register(server: MCPServer, nkf: NkfClient) -> None:
     )
     @_report_errors
     async def overview() -> str:
-        return render_overview(
-            await fetch_properties(nkf),
-            await fetch_tenants(nkf),
-            await fetch_statements(nkf),
-            await fetch_deadlines(nkf),
-            date.today(),
-        )
+        properties = await fetch_properties(nkf)
+        tenants = await fetch_tenants(nkf)
+        statements = await fetch_statements(nkf)
+        return render_overview(properties, tenants, statements, await fetch_deadlines(nkf, statements), date.today())
 
     @server.resource(
         DEADLINES_URI,

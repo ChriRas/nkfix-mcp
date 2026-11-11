@@ -1,5 +1,7 @@
 """Resources and prompts against a real instance (fantasy data, fresh data directory)."""
 
+from datetime import date
+
 import pytest
 
 from tests.contract.helpers import call, connected
@@ -32,9 +34,20 @@ async def test_overview_shows_the_example_property_with_its_tenants_and_statemen
 async def test_deadlines_resource_matches_the_deadline_tool(instance):
     async with connected(instance, 'lesen') as mcp:
         deadlines = (await call(mcp, 'list_deadlines'))['items']
+        statements = {s['id']: s for s in (await call(mcp, 'list_statements'))['items']}
         [content] = (await mcp.read_resource('nkfix://deadlines')).contents
     for deadline in deadlines:
-        assert f'{deadline["title"]} ({deadline["kind"]})' in content.text
+        assert deadline['title'] in content.text
+        assert f'({deadline["kind"]})' in content.text
+    # Built independently from list_statements: statement and period as the line names them.
+    named = [d for d in deadlines if d['statement_id'] is not None]
+    assert named, 'Die Beispielimmobilie sollte eine Frist mit Abrechnung haben.'
+    for deadline in named:
+        statement = statements[deadline['statement_id']]
+        start, end = (date.fromisoformat(statement[k]).strftime('%d.%m.%Y') for k in ('start_date', 'end_date'))
+        assert f'{deadline["title"]} (Abrechnung {statement["id"]}, {start} bis {end}) ({deadline["kind"]})' in (
+            content.text
+        )
 
 
 async def test_prompts_need_no_api_and_follow_the_scope(instance):

@@ -251,8 +251,18 @@ def sample_data() -> FakeNkf:
         '/api/fristen',
         {
             'termine': [
-                {'datum': '2026-12-31', 'art': 'abrechnungsfrist', 'titel': 'Ende der Abrechnungsfrist', 'uid': 'a@x'},
-                {'datum': '2027-06-30', 'art': 'eichfrist', 'titel': 'Eichfrist W-1', 'uid': 'b@x'},
+                {
+                    'datum': '2026-12-31',
+                    'art': 'abrechnungsfrist',
+                    'titel': 'Ende der Abrechnungsfrist',
+                    'uid': 'abrechnungsfrist-9@nebenkostenfix',
+                },
+                {
+                    'datum': '2027-06-30',
+                    'art': 'eichfrist',
+                    'titel': 'Eichfrist W-1',
+                    'uid': 'eichfrist-5@nebenkostenfix',
+                },
             ]
         },
     )
@@ -700,7 +710,89 @@ async def test_advance_payments_keep_the_strings():
 
 async def test_deadlines_until_a_date():
     data = await call(sample_data(), 'list_deadlines', until='2027-01-01')
-    assert data['items'] == [{'date': '2026-12-31', 'kind': 'abrechnungsfrist', 'title': 'Ende der Abrechnungsfrist'}]
+    assert data['items'] == [
+        {
+            'date': '2026-12-31',
+            'kind': 'abrechnungsfrist',
+            'title': 'Ende der Abrechnungsfrist',
+            'statement_id': 9,
+            'period_start': '2025-01-01',
+            'period_end': '2025-12-31',
+        }
+    ]
+
+
+def deadlines(*events: tuple[str, str]) -> FakeNkf:
+    """Only /api/fristen; every (kind, uid) on 31.12.2026."""
+    termine = [{'datum': '2026-12-31', 'art': kind, 'titel': f'Frist {kind}', 'uid': uid} for kind, uid in events]
+    return FakeNkf().json('GET', '/api/fristen', {'termine': termine})
+
+
+STATEMENTS = [
+    {'id': 9, 'tenant_name': 'Erika Muster', 'start_date': '2025-01-01', 'end_date': '2025-12-31'},
+    {'id': 8, 'tenant_name': 'Lisa Garten', 'start_date': '2024-07-01', 'end_date': '2025-03-15'},
+]
+
+
+async def test_statement_and_objection_deadlines_name_statement_and_period():
+    fake = deadlines(
+        ('abrechnungsfrist', 'abrechnungsfrist-9@nebenkostenfix'),
+        ('einwendungsfrist', 'einwendungsfrist-8@nebenkostenfix'),
+    ).json('GET', '/api/billing/reports', STATEMENTS)
+    items = (await call(fake, 'list_deadlines'))['items']
+    assert [(d['statement_id'], d['period_start'], d['period_end']) for d in items] == [
+        (9, '2025-01-01', '2025-12-31'),
+        (8, '2024-07-01', '2025-03-15'),
+    ]
+    assert len(fake.sent('GET', '/api/billing/reports')) == 1
+
+
+async def test_other_kinds_stay_without_statement_and_fetch_no_statements():
+    fake = deadlines(
+        ('ablesung', 'ablesung-1-20261231@nebenkostenfix'),
+        ('vorauszahlung', 'vorauszahlung-4@nebenkostenfix'),
+        ('eichfrist', 'eichfrist-5@nebenkostenfix'),
+        ('mietanpassung', 'mietanpassung-6@nebenkostenfix'),
+    )
+    items = (await call(fake, 'list_deadlines'))['items']
+    assert all(d['statement_id'] is None and d['period_start'] is None and d['period_end'] is None for d in items)
+    assert fake.sent('GET', '/api/billing/reports') == []
+
+
+@pytest.mark.parametrize(
+    'uid',
+    [
+        None,
+        'abrechnungsfrist-x@nebenkostenfix',
+        'abrechnungsfrist-9@anderswo',
+        'einwendungsfrist-9@nebenkostenfix',
+    ],
+)
+async def test_unexpected_uid_gives_no_statement(uid):
+    """The uid must match the kind exactly; anything else is ignored without an error."""
+    fake = deadlines(('abrechnungsfrist', uid)).json('GET', '/api/billing/reports', STATEMENTS)
+    (item,) = (await call(fake, 'list_deadlines'))['items']
+    assert item['statement_id'] is None
+    assert item['period_start'] is None
+
+
+async def test_statement_missing_from_the_list_keeps_its_id_without_period():
+    fake = deadlines(('abrechnungsfrist', 'abrechnungsfrist-77@nebenkostenfix')).json(
+        'GET', '/api/billing/reports', STATEMENTS
+    )
+    (item,) = (await call(fake, 'list_deadlines'))['items']
+    assert (item['statement_id'], item['period_start'], item['period_end']) == (77, None, None)
+
+
+async def test_error_from_the_statements_reaches_the_model():
+    fake = deadlines(('abrechnungsfrist', 'abrechnungsfrist-9@nebenkostenfix')).json(
+        'GET', '/api/billing/reports', {'error': 'kaputt'}, status=500
+    )
+    nkf = client(fake)
+    async with nkf, Client(build_server(nkf, 'lesen')) as mcp:
+        result = await mcp.call_tool('list_deadlines', {})
+    assert result.is_error
+    assert 'NebenkostenFix' in result.content[0].text
 
 
 async def test_cost_categories_providers_invoice_documents_heating_systems():
