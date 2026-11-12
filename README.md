@@ -13,6 +13,10 @@ deiner NebenkostenFix-Instanz arbeiten:
 Der Server ist ein eigener Prozess. Er spricht die JSON-API von NebenkostenFix über HTTP an und läuft auf
 deinem Rechner, neben Claude.
 
+nkfix-mcp ist ein eigenständiges Projekt, nicht Teil von NebenkostenFix und nicht vom Maintainer von
+NebenkostenFix. Fehler und Wünsche zu diesem Server gehören in die
+[Issues dieses Repos](https://github.com/ChriRas/nkfix-mcp/issues).
+
 > [!WARNING]
 > **Datenschutz: Alles, was der Assistent liest, geht an dessen Anbieter.**
 > NebenkostenFix hält deine Daten bei dir. Sobald ein Cloud-Assistent wie Claude über diesen Server Mieter,
@@ -56,7 +60,7 @@ vorigen oder eine Rechnung mit derselben Nummer, legt der Server nichts an, sond
 ## Installation
 
 ```bash
-uv tool install /pfad/zu/nkfix-mcp
+uv tool install git+https://github.com/ChriRas/nkfix-mcp@v0.1.0
 ```
 
 Danach liegt der Befehl `nkfix-mcp` in `~/.local/bin`. Den vollen Pfad zeigt:
@@ -206,6 +210,14 @@ Stand der Angaben: Oktober 2026. Die Clients ändern sich schnell, prüf im Zwei
 ## Entwicklung
 
 ```bash
+git clone https://github.com/ChriRas/nkfix-mcp.git
+```
+
+```bash
+cd nkfix-mcp
+```
+
+```bash
 uv venv --python 3.11
 ```
 
@@ -230,14 +242,15 @@ uv pip install -e . -r requirements-dev.txt
 ```
 
 Einmal `pre-commit install`, dann laufen ruff und mypy vor jedem Commit. Ein Hook lehnt Commit-Messages mit
-`Co-Authored-By:` oder „Generated with Claude Code“ ab. Die CI (`.github/workflows/ci.yml`) prüft dasselbe und
-lässt die Einheitstests laufen.
+`Co-Authored-By:` oder „Generated with Claude Code“ ab. Die CI (`.github/workflows/ci.yml`) prüft dasselbe,
+lässt die Einheitstests laufen und die Vertragstests gegen ein festes Release von NebenkostenFix.
 
 ```bash
 .venv/bin/pre-commit install
 ```
 
 Nach einem Pull, der das Paket verschiebt oder umbenennt, einmal neu installieren (`uv pip install -e .`).
+Aus einem lokalen Checkout installierst du den Befehl mit `uv tool install .`.
 
 **Vertragstests** gegen eine echte Instanz:
 - Sie starten NebenkostenFix aus einem Checkout ab 0.19.0 mit frischem Datenordner auf einem freien Port.

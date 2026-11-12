@@ -2,7 +2,7 @@
 
 MCP-Server für [NebenkostenFix](https://github.com/Nerbry72/NebenkostenFix). Ein eigener Prozess, der als HTTP-Client die JSON-API einer NebenkostenFix-Instanz anspricht. GPL-3.0.
 
-**Zu Beginn jeder Sitzung `.research/UEBERGABE.md` lesen.** Dort stehen Projekt, Ziele, API-Fakten, Plan und offene Punkte.
+**Zu Beginn jeder Sitzung `.research/UEBERGABE.md` lesen.** Dort stehen Projekt, Ziele, API-Fakten, Plan und offene Punkte. `.research/` gibt es nur lokal beim Autor, nicht im Repo.
 
 ## Regeln
 - Sprache:

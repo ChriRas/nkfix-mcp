@@ -10,6 +10,17 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
+authors = [{ name = "Christoph Raschke" }]
+keywords = ["mcp", "nebenkostenfix", "nebenkostenabrechnung", "claude", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: German",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
 # Pinned like the main project: an install tomorrow should get the versions
 # the tests ran against. The server API of mcp changed with major 2
 # (FastMCP -> MCPServer); a silent upgrade to 3 would be just as much of a
@@ -22,6 +33,10 @@ dependencies = [
     "anyio==4.15.1",
     "pydantic==2.14.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/ChriRas/nkfix-mcp"
+Issues = "https://github.com/ChriRas/nkfix-mcp/issues"
 
 [project.scripts]
 nkfix-mcp = "nkfix_mcp.server:main"
