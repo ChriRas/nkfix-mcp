@@ -10,6 +10,8 @@ one read key and one record key.
   are skipped.
 - ``NKF_PYTHON``: Python with the dependencies of NebenkostenFix,
   default ``$NKF_SOURCE/.venv/bin/python``.
+- ``NKF_CONTRACT_REQUIRED=1`` (CI): a test that would be skipped fails
+  instead, so a green run means the contract was checked.
 
 If the instance does not support API keys (NebenkostenFix before 0.19.0), the key
 tests are skipped; the session tests still run.
@@ -25,11 +27,21 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 import httpx2
 import pytest
 
 USERNAME = 'testvermieter'
+
+
+def skip_or_fail(reason: str) -> NoReturn:
+    """Skip locally; with NKF_CONTRACT_REQUIRED=1 (CI) a skip would hide that nothing was checked."""
+    if os.environ.get('NKF_CONTRACT_REQUIRED') == '1':
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
 PASSWORD = 'vertrag-' + 'x' * 12
 
 
@@ -46,7 +58,7 @@ class Instance:
             return {'NKF_URL': self.url, 'NKF_USERNAME': USERNAME, 'NKF_PASSWORD': PASSWORD}
         api_key = self.read_key if access == 'lesen' else self.record_key
         if api_key is None:
-            pytest.skip('Diese NebenkostenFix-Instanz kennt keine Zugriffsschlüssel.')
+            skip_or_fail('Diese NebenkostenFix-Instanz kennt keine Zugriffsschlüssel.')
         return {'NKF_URL': self.url, 'NKF_API_KEY': api_key}
 
 
@@ -99,7 +111,7 @@ def _set_up(url: str, data_dir: Path) -> tuple[str | None, str | None]:
 def instance(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Instance]:
     source = os.environ.get('NKF_SOURCE')
     if not source:
-        pytest.skip('NKF_SOURCE ist nicht gesetzt (Checkout von NebenkostenFix).')
+        skip_or_fail('NKF_SOURCE ist nicht gesetzt (Checkout von NebenkostenFix).')
     source_path = Path(source).expanduser()
     python = os.environ.get('NKF_PYTHON') or str(source_path / '.venv' / 'bin' / 'python')
 

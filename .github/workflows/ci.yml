@@ -1,5 +1,5 @@
 # Lint, types and unit tests on every push and pull request.
-# The contract tests need a NebenkostenFix checkout (NKF_SOURCE) and run locally only.
+# The contract tests run against a fixed NebenkostenFix release (job contract).
 # Actions are pinned to a commit; the comment names the release.
 name: CI
 
@@ -16,7 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.11'
       - name: Install
@@ -32,3 +34,39 @@ jobs:
         run: .venv/bin/mypy
       - name: Unit tests
         run: .venv/bin/python -m pytest tests/unit
+
+  contract:
+    # A real NebenkostenFix from a release: if upstream changes the API, this job fails.
+    # Raise the commit and its tag comment by hand when a new release is out.
+    runs-on: ubuntu-latest
+    # NebenkostenFix starts as a real server; if it hangs, the job ends here and not after six hours.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: Nerbry72/NebenkostenFix
+          # The commit of the release tag: a tag can be moved, a commit cannot.
+          ref: 3b34b9b2b3d7f8a917b9034b0b9bdc91f93db032  # v0.19.0
+          path: nebenkostenfix
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.11'
+          # Foreign code runs in this job; it must not write a cache that other runs use.
+          enable-cache: false
+      - name: Install
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -r requirements.txt -r requirements-dev.txt .
+          uv venv nebenkostenfix/.venv
+          uv pip install --python nebenkostenfix/.venv/bin/python -r nebenkostenfix/requirements.txt
+      - name: Contract tests
+        env:
+          NKF_SOURCE: ${{ github.workspace }}/nebenkostenfix
+          NKF_PYTHON: ${{ github.workspace }}/nebenkostenfix/.venv/bin/python
+          # A skipped contract test fails here: green must mean checked.
+          NKF_CONTRACT_REQUIRED: '1'
+        run: .venv/bin/python -m pytest tests/contract -rs

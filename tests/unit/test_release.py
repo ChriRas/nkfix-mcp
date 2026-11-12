@@ -38,6 +38,35 @@ def test_metadata_name_the_author_and_the_repo():
     assert not [c for c in project['classifiers'] if c.startswith('License ::')]
 
 
+def _job(name: str) -> str:
+    """The text of one job, up to the next job."""
+    parts = re.split(r'\n  ([\w-]+):\n', CI)
+    jobs = dict(zip(parts[1::2], parts[2::2], strict=True))
+    assert name in jobs, f'Job "{name}" fehlt'
+    return jobs[name]
+
+
+def test_ci_runs_the_contract_tests_against_a_pinned_nebenkostenfix_release():
+    job = _job('contract')
+    assert 'repository: Nerbry72/NebenkostenFix' in job
+    # A tag can be moved; the commit cannot. The comment names the release.
+    assert re.search(r'ref: [0-9a-f]{40}  # v\d+\.\d+\.\d+\n', job), 'NebenkostenFix muss an einem Commit hängen'
+    assert 'NKF_SOURCE:' in job
+    assert 'NKF_PYTHON:' in job
+    # In CI a skipped contract test would be green without checking anything.
+    assert "NKF_CONTRACT_REQUIRED: '1'" in job
+    assert 'pytest tests/contract -rs' in job
+
+
+def test_contract_job_keeps_the_foreign_code_away_from_token_and_cache():
+    job = _job('contract')
+    assert 'enable-cache: false' in job
+    assert re.search(r'timeout-minutes: \d+', job)
+    for name in ('check', 'contract'):
+        checkouts = _job(name).count('uses: actions/checkout@')
+        assert _job(name).count('persist-credentials: false') == checkouts, name
+
+
 def test_every_action_is_pinned_to_a_commit():
     uses = re.findall(r'uses: (\S+)', CI)
     assert uses
